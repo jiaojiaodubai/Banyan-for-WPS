@@ -1,0 +1,20 @@
+<customUI xmlns="http://schemas.microsoft.com/office/2006/01/customui" onLoad="OnAddinLoad">
+    <ribbon startFromScratch="false">
+        <tabs>
+            <tab id="tabBanyan" label="Banyan">
+                <group id="grpBanyanMain" label="Banyan">
+                    <button id="btnCitation" getLabel="OnGetLabel" onAction="OnAction" getImage="OnGetImage" getVisible="OnGetVisible" size="large"/>
+                    <button id="btnChapterBreak" getLabel="OnGetLabel" onAction="OnAction" getImage="OnGetImage" getVisible="OnGetVisible" size="large"/>
+                    <button id="btnBibliography" getLabel="OnGetLabel" onAction="OnAction" getImage="OnGetImage" getVisible="OnGetVisible" size="large"/>
+                    <button id="btnCitationPane" getLabel="OnGetLabel" onAction="OnAction" getImage="OnGetImage" getVisible="OnGetVisible" size="large"/>
+                    <button id="btnRefresh" getLabel="OnGetLabel" onAction="OnAction" getImage="OnGetImage" getVisible="OnGetVisible" size="large"/>
+                    <button id="btnConvert" getLabel="OnGetLabel" onAction="OnAction" getImage="OnGetImage" getVisible="OnGetVisible" size="large"/>
+                    <button id="btnUnlink" getLabel="OnGetLabel" onAction="OnAction" getImage="OnGetImage" getVisible="OnGetVisible" size="large"/>
+                    <button id="btnDebugFieldData" getLabel="OnGetLabel" onAction="OnAction" getImage="OnGetImage" getVisible="OnGetVisible" size="large"/>
+                    <toggleButton id="btnDarkTheme" getLabel="OnGetLabel" getPressed="OnGetPressed" onAction="OnAction" getImage="OnGetImage" getVisible="OnGetVisible" size="large"/>
+                    <button id="btnSettings" getLabel="OnGetLabel" onAction="OnAction" getImage="OnGetImage" getVisible="OnGetVisible" size="large"/>
+                </group>
+            </tab>
+        </tabs>
+    </ribbon>
+</customUI>

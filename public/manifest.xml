@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<JsPlugin>
+  <ApiVersion>1.0.0</ApiVersion>
+  <Name>Banyan</Name>
+  <Description>Zotero Banyan Add-in for WPS Office</Description>
+</JsPlugin>

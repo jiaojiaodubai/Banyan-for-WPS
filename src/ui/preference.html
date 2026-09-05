@@ -1,0 +1,271 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Banyan Preferences</title>
+    <style>
+      :root {
+        --text-main: #0d0d0d;
+        --bg-main: #f5f5f5;
+        --input-bg: #ffffff;
+        --input-border: #e2e2e2;
+        --input-hover-border: #c5c5c5;
+        --input-active-border: #1e5fc7;
+        --button-bg: #ffffff;
+        --button-hover-bg: #f5f5f5;
+        --button-active-bg: #f0f0f0;
+        --button-disabled-text: #979797;
+        --button-disabled-bg: #f3f3f3;
+        --button-primary-text: #ffffff;
+        --button-primary-bg: #1f69e0;
+        --button-primary-hover-bg: #458bfa;
+        --button-primary-active-bg: #1e5ec7;
+        --placeholder-text: #888888;
+        --control-height: 28px;
+      }
+
+      html[data-theme="dark"],
+      body[data-theme="dark"] {
+        --text-main: #f5f5f5;
+        --bg-main: #191919;
+        --input-bg: #2b2b2b;
+        --input-border: #383838;
+        --input-hover-border: #5c5c5c;
+        --input-active-border: #4289ff;
+        --button-bg: #2d2d2d;
+        --button-hover-bg: #333333;
+        --button-active-bg: #383838;
+        --button-disabled-text: #787878;
+        --button-disabled-bg: #252525;
+        --button-primary-text: #ffffff;
+        --button-primary-bg: #1e74ff;
+        --button-primary-hover-bg: #1863da;
+        --button-primary-active-bg: #4289ff;
+        --placeholder-text: #888888;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+      }
+
+      html {
+        font-size: 13.5px;
+      }
+
+      body {
+        margin: 0;
+        padding: 0 17px;
+        background: var(--bg-main);
+        color: var(--text-main);
+        display: flex;
+        flex-direction: column;
+      }
+
+      main {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+      }
+
+      section > h1 {
+        font-size: 1.05em;
+        font-weight: 600;
+        margin: 0;
+        padding-top: 8px;
+        padding-bottom: 6px;
+      }
+
+      section > .content {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      .style-row {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        font-size: inherit;
+      }
+
+      #section-chapter > .content {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) max-content;
+        column-gap: 8px;
+        row-gap: 8px;
+      }
+
+      #section-chapter > .content > .style-row {
+        display: contents;
+      }
+
+      .style-row-label {
+        grid-column: 1 / -1;
+        white-space: nowrap;
+        color: var(--text-main);
+      }
+
+      .style-row-content {
+        display: contents;
+      }
+
+      .style-row > div {
+        white-space: nowrap;
+      }
+
+      .style-name {
+        grid-column: 1;
+      }
+
+      .style-row-content > .button {
+        grid-column: 2;
+        width: auto;
+        min-width: max-content;
+      }
+
+      .style-row-content > .style-name {
+        height: var(--control-height);
+        border: 1px solid var(--input-border);
+        border-radius: 6px;
+        background: var(--input-bg);
+        color: var(--text-main);
+        font-size: inherit;
+        min-width: 0;
+        width: 100%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .style-name:hover {
+        border-color: var(--input-hover-border);
+      }
+
+      .style-name:focus {
+        outline: none;
+        border-color: var(--input-active-border);
+      }
+
+      .style-name::placeholder {
+        color: var(--placeholder-text);
+      }
+
+      .style-name[readonly] {
+        cursor: default;
+        background: var(--input-bg);
+      }
+
+      .button {
+        min-width: 72px;
+        height: var(--control-height);
+        border: 1px solid var(--input-border);
+        border-radius: 6px;
+        background: var(--button-bg);
+        color: var(--text-main);
+        font-size: inherit;
+        cursor: pointer;
+        white-space: nowrap;
+      }
+
+      .button:hover {
+        background: var(--button-hover-bg);
+        border-color: var(--input-hover-border);
+      }
+
+      .button:active {
+        background: var(--button-active-bg);
+      }
+
+      .button:disabled {
+        cursor: not-allowed;
+        color: var(--button-disabled-text);
+        background: var(--button-disabled-bg);
+      }
+
+      footer {
+        padding: 18px 0;
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+      }
+
+      .button-primary {
+        color: var(--button-primary-text);
+        background: var(--button-primary-bg);
+        border-color: var(--button-primary-bg);
+      }
+
+      .button-primary:hover {
+        background: var(--button-primary-hover-bg);
+        border-color: var(--button-primary-hover-bg);
+      }
+
+      .button-primary:active {
+        background: var(--button-primary-active-bg);
+        border-color: var(--button-primary-active-bg);
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <section id="section-global">
+        <h1 id="global-title"></h1>
+        <div class="content">
+          <banyan-checkbox id="syncItems" checked></banyan-checkbox>
+          <banyan-checkbox id="refreshAll" checked></banyan-checkbox>
+        </div>
+      </section>
+      <section id="section-chapter">
+        <h1 id="chapter-title"></h1>
+        <div class="content">
+          <div class="style-row">
+            <div class="style-row-label" id="style-label"></div>
+            <div class="style-row-content">
+              <input class="style-name" id="style-title" type="text" readonly />
+              <button
+                class="button"
+                id="fetch-style-btn"
+                type="button"
+              ></button>
+            </div>
+          </div>
+          <div class="style-row">
+            <div class="style-row-label" id="bib-title-style-label"></div>
+            <div class="style-row-content">
+              <input class="style-name" id="bib-title-style" type="text" />
+              <button
+                class="button"
+                id="clear-bib-title-style-btn"
+                type="button"
+              ></button>
+            </div>
+          </div>
+          <div class="style-row">
+            <div class="style-row-label" id="bib-entry-style-label"></div>
+            <div class="style-row-content">
+              <input class="style-name" id="bib-entry-style" type="text" />
+              <button
+                class="button"
+                id="clear-bib-entry-style-btn"
+                type="button"
+              ></button>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+    <footer>
+      <button class="button button-primary" id="ok-btn" type="button"></button>
+      <button class="button" id="cancel-btn" type="button"></button>
+    </footer>
+    <script type="text/javascript" src="./preference.js"></script>
+  </body>
+</html>

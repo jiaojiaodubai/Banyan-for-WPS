@@ -1,0 +1,301 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Banyan Citation Pane</title>
+    <style>
+      :root {
+        --text-main: #262e3e;
+        --bg-main: #f0f0f0;
+        --content-bg: #ffffff;
+        --content-border: #d5d5d5;
+        --row-hover-bg: #f1f1f1;
+        --row-active-bg: #e6e6e6;
+        --icon-hover-bg: #e4e4e4;
+        --icon-active-bg: #d9d9d9;
+        --button-text: #0d0d0d;
+        --button-bg: #ffffff;
+        --button-hover-bg: #f5f5f5;
+        --button-active-bg: #f0f0f0;
+        --row-height: 32px;
+        --row-line-height: 1.2;
+        --root-font-size: 10px;
+        --collapse-icon-filter: brightness(0) saturate(100%) invert(20%)
+          sepia(0%) saturate(0%) hue-rotate(0deg) brightness(100%)
+          contrast(100%);
+      }
+
+      body[data-theme="dark"] {
+        --text-main: #f5f5f5;
+        --bg-main: #121212;
+        --content-bg: #292929;
+        --content-border: #323232;
+        --row-hover-bg: #353535;
+        --row-active-bg: #3e3e3e;
+        --icon-hover-bg: #404040;
+        --icon-active-bg: #484848;
+        --button-text: #f2f4f8;
+        --button-bg: #252525;
+        --button-hover-bg: #333333;
+        --button-active-bg: #383838;
+        --collapse-icon-filter: brightness(0) saturate(100%) invert(78%)
+          sepia(0%) saturate(0%) hue-rotate(0deg) brightness(100%)
+          contrast(100%);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        overflow: hidden;
+        font-size: var(--root-font-size);
+      }
+
+      body {
+        display: flex;
+        flex-direction: column;
+        background: var(--bg-main);
+        color: var(--text-main);
+        padding: 0 16px;
+      }
+
+      header {
+        padding: 25px 0 5px;
+        color: var(--text-main);
+      }
+
+      #pane-title {
+        font-weight: 600;
+      }
+
+      main {
+        flex: 1;
+        overflow: hidden;
+        padding: 5px 0 5px;
+        display: flex;
+      }
+
+      .citation-list {
+        list-style: none;
+        margin: 0;
+        padding: 5px;
+        background: var(--content-bg);
+        border: 1px solid var(--content-border);
+        border-radius: 4px;
+        flex: 1;
+        overflow: auto;
+      }
+
+      .citation-list[hidden] {
+        display: none;
+      }
+
+      .citation-message {
+        display: flex;
+        flex: 1;
+        background: var(--content-bg);
+        border: 1px solid var(--content-border);
+        border-radius: 4px;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        line-height: 1.5;
+        padding: 18px 14px;
+      }
+
+      .citation-message[hidden] {
+        display: none;
+      }
+
+      .citation-list > li {
+        margin: 4px;
+        outline: none;
+      }
+
+      .citation-list .citation-line,
+      .citation-list .citation-item-list > li {
+        color: var(--text-main);
+        background: transparent;
+        border-radius: 6px;
+        min-height: var(--row-height);
+        line-height: var(--row-line-height);
+        display: grid;
+        grid-template-columns: auto 1fr auto;
+        align-items: center;
+        column-gap: 4px;
+        padding: 4px;
+      }
+
+      .citation-list .citation-line:hover,
+      .citation-list .citation-item-list > li:hover {
+        background: var(--row-hover-bg);
+      }
+
+      .citation-list > li.is-active > .citation-line,
+      .citation-list .citation-item-list > li.is-selected {
+        background: var(--row-active-bg);
+      }
+
+      .icon-button {
+        width: 24px;
+        height: 24px;
+        border: 0;
+        border-radius: 4px;
+        background: transparent;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0;
+        color: var(--button-text);
+      }
+
+      .icon-button:disabled,
+      .rect-button:disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
+      }
+
+      .icon-button:hover {
+        background: var(--icon-hover-bg);
+      }
+
+      .citation-list li.is-active .icon-button:hover {
+        background: var(--icon-active-bg);
+      }
+
+      .icon-button > img.icon {
+        width: 18px;
+        height: 18px;
+        display: block;
+        filter: var(--collapse-icon-filter);
+      }
+
+      .citation-list .citation-line > .citation-preview {
+        width: 100%;
+        border: 0;
+        background: transparent;
+        color: inherit;
+        text-align: left;
+        cursor: pointer;
+        min-width: 0;
+        padding-left: 0;
+      }
+
+      .citation-preview {
+        display: block;
+        min-width: 0;
+        color: var(--text-main);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .citation-page {
+        color: inherit;
+        white-space: nowrap;
+        margin-right: 4px;
+      }
+
+      .citation-list .citation-item-list {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        padding-bottom: 6px;
+        padding-top: 2px;
+        margin-left: 24px;
+      }
+
+      .citation-list .citation-item-list[hidden] {
+        display: none;
+      }
+
+      .citation-list .citation-item-list > li {
+        margin-top: 2px;
+      }
+
+      .citation-item-title {
+        display: block;
+        min-width: 0;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .rect-button {
+        color: var(--button-text);
+        background: var(--button-bg);
+        height: 24px;
+        padding: 0 12px;
+        border: 1px solid var(--content-border);
+        border-radius: 5px;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: var(--root-font-size);
+      }
+
+      .rect-button:hover {
+        background: var(--button-hover-bg);
+      }
+
+      .rect-button:active {
+        background: var(--button-active-bg);
+      }
+
+      .footer {
+        padding: 4px 12px 12px;
+        background: transparent;
+        display: flex;
+        justify-content: flex-end;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .footer .rect-button {
+        min-width: 62px;
+        line-height: 1;
+      }
+
+      .footer .icon-button {
+        width: 32px;
+        height: 24px;
+      }
+
+      .footer .icon-button img {
+        width: 18px;
+        height: 18px;
+      }
+
+      body[data-theme="dark"] .footer .icon-button img {
+        filter: var(--collapse-icon-filter);
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div id="pane-title"></div>
+    </header>
+    <main class="content">
+      <ul class="citation-list" id="citation-list"></ul>
+      <div class="citation-message" id="citation-message" hidden></div>
+    </main>
+    <footer class="footer">
+      <button class="rect-button" id="reload-btn" type="button"></button>
+      <button class="icon-button" id="prev-chapter-btn" type="button">
+        <img id="prev-chapter-icon" alt="" aria-hidden="true" />
+      </button>
+      <button class="icon-button" id="next-chapter-btn" type="button">
+        <img id="next-chapter-icon" alt="" aria-hidden="true" />
+      </button>
+    </footer>
+    <script type="module" src="./taskpane.ts"></script>
+  </body>
+</html>
