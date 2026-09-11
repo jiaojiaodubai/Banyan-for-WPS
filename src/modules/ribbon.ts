@@ -24,7 +24,6 @@ const ICON_BUTTON_IDS = [
   "btnRefresh",
   "btnConvert",
   "btnUnlink",
-  "btnDebugFieldData",
   "btnSettings",
   "btnDarkTheme",
 ]
@@ -47,7 +46,7 @@ const LABELS_ZH = {
   btnRefresh: "刷新",
   btnConvert: "转换 Zotero 域",
   btnUnlink: "定稿",
-  btnDebugFieldData: "调试：输出字段数据",
+  btnDebugFieldData: "运行测试",
   btnSettings: "设置",
   btnDarkTheme: "暗色主题",
 }
@@ -59,7 +58,7 @@ const LABELS_EN = {
   btnRefresh: "Refresh",
   btnConvert: "Convert Zotero Fields",
   btnUnlink: "Finalize",
-  btnDebugFieldData: "Debug: Log Field Data",
+  btnDebugFieldData: "Run Tests",
   btnSettings: "Preferences",
   btnDarkTheme: "Dark Theme",
 }
@@ -107,7 +106,12 @@ function OnAction(arg1: unknown, arg2?: unknown) {
       void withOperationLock(() => onPreferenceEvent(), undefined, "open-preference-dialog")
       break
     case "btnDebugFieldData": {
-      logFirstSelectedFieldData()
+      void withOperationLock(async () => {
+        if (!import.meta.env.DEV) return
+        const testModulePath = "/test/index.ts"
+        const { runPerformanceTests } = await import(/* @vite-ignore */ testModulePath) as typeof import("../../test/index")
+        await runPerformanceTests()
+      }, "__banyan_performance_tests__", "performance-tests")
       break
     }
     case "btnDarkTheme": {
@@ -165,26 +169,6 @@ function refreshRibbonIcons() {
   Application.UpdateRibbon()
 }
 
-function logFirstSelectedFieldData() {
-  const range = wps.Selection.Range.Duplicate
-  if (range.Fields.Count === 0) {
-    console.warn("[Banyan Debug] Selected range does not contain any field.")
-    return
-  }
-
-  const field = range.Fields.Item(1)
-  try {
-    const parsed = JSON.parse(field.Data)
-    console.debug("[Banyan Debug] First selected field data:", parsed)
-  }
-  catch (error) {
-    console.error("[Banyan Debug] Failed to parse first selected field data.", {
-      data: field.Data,
-      error,
-    })
-  }
-}
-
 function OnGetImage(control: RibbonControl) {
   const isDark = getThemeMode() === "dark"
 
@@ -204,8 +188,6 @@ function OnGetImage(control: RibbonControl) {
     case "btnUnlink":
       return isDark ? "assets/link-variant-off-dark.svg" : "assets/link-variant-off.svg"
     case "btnSettings":
-      return isDark ? "assets/cog-outline-dark.svg" : "assets/cog-outline.svg"
-    case "btnDebugFieldData":
       return isDark ? "assets/cog-outline-dark.svg" : "assets/cog-outline.svg"
     case "btnDarkTheme":
       return isDark ? "assets/theme-light-dark-dark.svg" : "assets/theme-light-dark.svg"

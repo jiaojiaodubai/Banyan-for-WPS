@@ -10,7 +10,7 @@
                     <button id="btnRefresh" getLabel="OnGetLabel" onAction="OnAction" getImage="OnGetImage" getVisible="OnGetVisible" size="large"/>
                     <button id="btnConvert" getLabel="OnGetLabel" onAction="OnAction" getImage="OnGetImage" getVisible="OnGetVisible" size="large"/>
                     <button id="btnUnlink" getLabel="OnGetLabel" onAction="OnAction" getImage="OnGetImage" getVisible="OnGetVisible" size="large"/>
-                    <button id="btnDebugFieldData" getLabel="OnGetLabel" onAction="OnAction" getImage="OnGetImage" getVisible="OnGetVisible" size="large"/>
+                    <button id="btnDebugFieldData" getLabel="OnGetLabel" onAction="OnAction" getVisible="OnGetVisible" size="large"/>
                     <toggleButton id="btnDarkTheme" getLabel="OnGetLabel" getPressed="OnGetPressed" onAction="OnAction" getImage="OnGetImage" getVisible="OnGetVisible" size="large"/>
                     <button id="btnSettings" getLabel="OnGetLabel" onAction="OnAction" getImage="OnGetImage" getVisible="OnGetVisible" size="large"/>
                 </group>

@@ -13,6 +13,6 @@
     "types": ["vite/client", "wps-jsapi-declare"],
     "skipLibCheck": true
   },
-  "include": ["src/**/*"],
+  "include": ["src/**/*", "test/**/*"],
   "exclude": ["dist"]
 }

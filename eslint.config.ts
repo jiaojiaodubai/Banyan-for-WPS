@@ -25,7 +25,7 @@ export default defineConfig([
   },
   tseslint.configs.recommended,
   {
-    files: ["src/**/*.{ts,mts}", "./*.ts"],
+    files: ["src/**/*.{ts,mts}", "test/**/*.{ts,mts}", "./*.ts"],
     plugins: { "@stylistic": stylistic },
     rules: {
       "@stylistic/brace-style": [
