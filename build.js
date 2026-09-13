@@ -11,7 +11,10 @@ const manifestXml = fs.readFileSync(path.join(__dirname, 'public/manifest.xml'),
 const doc = new DOMParser().parseFromString(manifestXml, 'text/xml')
 
 const name = doc.getElementsByTagName('Name')[0].textContent
-const version = doc.getElementsByTagName('ApiVersion')[0].textContent
+// 版本号以 package.json 为单一来源：manifest.xml 的 <ApiVersion> 声明的是 WPS
+// JSAPI 版本，不是插件版本，因此不能拿来做发布目录名。
+const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf-8'))
+const version = pkg.version
 const distDir = path.join(__dirname, 'dist')
 const releaseDir = path.join(__dirname, 'release')
 const targetDir = path.join(releaseDir, `${name}_${version}`)
