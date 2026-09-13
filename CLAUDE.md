@@ -16,21 +16,23 @@ Banyan for WPS 是一个基于 WPSJS API 的 WPS Office 加载项，与 Banyan f
 
 ### 域协议
 
-域代码只用于标识，不影响域结果。
+域代码携带域类型与数据 id，是域身份的唯一来源；域结果由数据决定。
 
 ```plaintext
-BANYAN_CITATION {uuid}
-BANYAN_BIBLIOGRAPHY_TITLE
-BANYAN_BIBLIOGRAPHY_ENTRY {id}
-BANYAN_CHAPTER_BREAK
+BANYAN_CITATION <id>
+BANYAN_BIBLIOGRAPHY <id>
+<章节分隔符提示文本>
 ```
 
-- `BANYAN_BIBLIOGRAPHY_ENTRY` 的 `id` 用于实现“点击引注跳转到对应题录”。
-- `BANYAN_CHAPTER_BREAK` 用于分割章节，同时存储章节级设置。
+- `BANYAN_CITATION <id>`：正文引注与脚注引注；`BANYAN_BIBLIOGRAPHY <id>`：书目标题行与书目题录行（标题行同样携带 id）。
+- 章节分隔符以本地化提示文本作为域代码（`Banyan章节分隔符` / `Banyan chapter break`），靠 `Data` 的 `type` 识别。
+- 分类只解析域代码，不读 `Field.Data`；能解析出来的代码即被信任。复制粘贴造成的重复 id 会在收集阶段重写域代码完成重键，id 缺失的域视为损坏并删除。
+- `BANYAN_BIBLIOGRAPHY` 的 `id` 用于实现“点击引注跳转到对应题录”。
+- 章节分隔符用于分割章节，同时存储章节级设置。
 - 所有域的 `Data` 必须存储 JSON，结构见 `src/typings/style.d.ts` 中 `RenderUnit` 及其子类型。
 - 域结果由数据中的 `Token` 指定。
 - `Token` 可能包含 Zotero 规定的富文本标记：`<i>`、`<b>`、`<sub>`、`<sup>`、`<span style="font-variant:small-caps;">`、`<span class="nocase">`。
-- `Token.link` 的含义：`http://` / `https://` 为外部链接；`banyan://entry/{id}` 跳转到题录书签 `banyan_bib_{entryId}`。
+- `Token.link` 的含义：`http://` / `https://` 为外部链接；`banyan://entry/{id}` 跳转到由 `getBibliographyBookmarkName()` 和 `normalizeBookmarkName()` 生成的题录书签。
 
 ### 配置落点
 
@@ -38,7 +40,7 @@ BANYAN_CHAPTER_BREAK
 - Banyan 后端优先使用 Zotero HTTP Server 默认端口 `23119`，连接失败时回退到调试端口 `23124`；不读取共享配置文件或 Token。
 
 - 文档全局配置存放在文档自定义属性（`CustomDocumentProperties`）的 `BANYAN_PREF` 中，值为 JSON 字符串。
-- 第一章的章节配置与全局配置一同存放在 `BANYAN_PREF`；插入章节分隔符后，各章的章节配置存放在其前一个 `BANYAN_CHAPTER_BREAK` 域的 Data 中。
+- 第一章的章节配置与全局配置一同存放在 `BANYAN_PREF`；插入章节分隔符后，各章的章节配置存放在其前一个章节分隔符域的 Data 中。
 
 ## 工程约束
 

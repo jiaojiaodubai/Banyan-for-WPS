@@ -1,4 +1,5 @@
 import { runBibliographyTests } from "./bibliography.test"
+import { runCitationTests } from "./citation.test"
 import { runFieldTests } from "./field.test"
 import { TestContext, type PerformanceMetric } from "./framework"
 import { runHttpTests } from "./http.test"
@@ -19,7 +20,8 @@ function formatMetric(metric: PerformanceMetric): string {
   ].filter(Boolean).join(" ")
   const perItemCount = metric.size ?? metric.iterations
   const perItem = perItemCount ? ` perItem=${formatMs(metric.totalMs / perItemCount)}` : ""
-  return `[TIME] ${metric.module}.${metric.name}${attributes ? ` ${attributes}` : ""} total=${formatMs(metric.totalMs)}${perItem}`
+  const statistic = metric.statistic && metric.statistic !== "single" ? ` statistic=${metric.statistic}` : ""
+  return `[TIME] ${metric.module}.${metric.name}${attributes ? ` ${attributes}` : ""} total=${formatMs(metric.totalMs)}${perItem}${statistic}`
 }
 
 function buildReport(context: TestContext, totalMs: number): string {
@@ -30,8 +32,9 @@ function buildReport(context: TestContext, totalMs: number): string {
     "========================================================================",
     `[INFO] generatedAt=${new Date().toISOString()}`,
     `[INFO] WPS=${Application.Version}; userAgent=${navigator.userAgent}`,
-    "[INFO] scope=WPS object model, local JSON and Banyan backend hello endpoint",
+    "[INFO] scope=WPS object model, citation/field/bibliography paths, local JSON and Banyan backend hello endpoint",
     "[INFO] benchmarkSizes=10,50,100; fieldRepetitions=4; styleIterations=20",
+    "[INFO] stagedMetrics=field text/style/rich-text/link stages; citation source/content decisions; bibliography incremental/delete strategies; host-option diagnostic uses size=10; selected comparisons use 3-sample median",
     "",
     "[TESTS]",
   ]
@@ -90,7 +93,7 @@ export async function runPerformanceTests(): Promise<void> {
     testDocument.Activate()
     testDocument.Content.Text = "Banyan performance test. "
 
-    const suites = [runHttpTests, runFieldTests, runRefreshTests, runBibliographyTests]
+    const suites = [runHttpTests, runFieldTests, runCitationTests, runRefreshTests, runBibliographyTests]
     for (const runSuite of suites) {
       try {
         await runSuite(context)

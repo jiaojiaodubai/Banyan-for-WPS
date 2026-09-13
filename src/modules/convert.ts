@@ -354,7 +354,7 @@ function readVariableByName(
     return String(variable.Value)
   }
   catch {
-    // Fall back to iteration for hosts that do not support name-based access.
+    // 宿主不支持按名访问时退回迭代。
   }
 
   const count = Number(variables.Count)

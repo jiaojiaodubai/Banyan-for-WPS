@@ -2,7 +2,7 @@ import { request } from "./http"
 import { logWarn } from "./log"
 
 /**
- * Wraps an async operation with progress bar display
+ * 用进度条包装一个异步操作
  * @param reason - The reason to display in the progress bar
  * @param operation - The async operation to execute
  * @returns The result of the operation

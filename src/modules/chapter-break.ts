@@ -1,6 +1,6 @@
 import type { CitationSource } from "../typings/style"
 import type { BanyanFieldData, FieldAndData } from "../utils/field"
-import { createEmptyRichText, isBanyanFieldData, isUnknownRecord, readFieldData } from "../utils/field"
+import { createEmptyRichText, fieldHasCodeKind, isBanyanFieldData, isUnknownRecord, readFieldData } from "../utils/field"
 import { useI10n } from "../utils/i10n"
 import { getPreference } from "./preference"
 import type { PrefStyle } from "./preference"
@@ -143,11 +143,14 @@ export function findPreviousChapterBreak(): FieldAndData<ChapterBreak> | null {
     const selection = ensureCaretInMainText()
     let field = selection.PreviousField()
     while (field !== null) {
-      const data = readFieldData(field)
-      if (isChapterBreak(data)) {
-        return {
-          field,
-          data,
+      // 先按域代码分类（章节分隔符的域代码就是提示文本），命中后才读数据。
+      if (fieldHasCodeKind(field, "chapter")) {
+        const data = readFieldData<ChapterBreak>(field)
+        if (isChapterBreak(data)) {
+          return {
+            field,
+            data,
+          }
         }
       }
       field = field.Previous
@@ -165,11 +168,13 @@ export function findNextChapterBreak(): FieldAndData<ChapterBreak> | null {
     const selection = ensureCaretInMainText()
     let field = selection.NextField()
     while (field !== null) {
-      const data = readFieldData(field)
-      if (isChapterBreak(data)) {
-        return {
-          field,
-          data,
+      if (fieldHasCodeKind(field, "chapter")) {
+        const data = readFieldData<ChapterBreak>(field)
+        if (isChapterBreak(data)) {
+          return {
+            field,
+            data,
+          }
         }
       }
       field = field.Next
@@ -193,7 +198,7 @@ export function ensureCaretInMainText() {
   }
   if (wps.Selection.Fields.Count > 0) {
     const field = wps.Selection.Fields.Item(1)
-    if (isChapterBreak(readFieldData(field))) {
+    if (fieldHasCodeKind(field, "chapter")) {
       const after = field.Result.Duplicate
       after.Collapse(wps.Enum.wdCollapseEnd)
       after.Select()

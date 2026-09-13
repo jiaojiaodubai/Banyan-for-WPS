@@ -9,6 +9,7 @@ import {
   isBibliographyTitle,
   isIntextCitation,
   isNoteCitation,
+  normalizeBookmarkName,
   readFieldData,
   renderRange,
 } from "../utils/field"
@@ -279,8 +280,8 @@ function restoreUnlinkedResult(range: Wps.Range, data: BanyanFieldData | null): 
       restoreBookmarkToRange(range, getBibliographyBookmarkName(data.id))
     }
     if (isIntextCitation(data) || isNoteCitation(data)) {
-      // WPS leaves nested HYPERLINK fields inside an unlinked ADDIN result.
-      // Rewriting citation text keeps the Result range but removes that stale field structure.
+      // WPS 会在已解除链接的 ADDIN 域结果里留下嵌套的 HYPERLINK 域。
+      // 重写引注文本可以保留 Result 范围，同时清掉这段残留的域结构。
       renderRange(range, data.content)
       return
     }
@@ -298,13 +299,12 @@ function restoreBookmarkToRange(range: Wps.Range, bookmarkName: string): void {
 
   try {
     const bookmarks = wps.ActiveDocument.Bookmarks
-    for (let i = 1; i <= bookmarks.Count; i += 1) {
-      if (bookmarks.Item(i).Name === bookmarkName) {
-        bookmarks.Item(i).Delete()
-        break
-      }
+    const normalizedName = normalizeBookmarkName(bookmarkName)
+    if (!normalizedName) return
+    if (bookmarks.Exists(normalizedName)) {
+      bookmarks.Item(normalizedName).Delete()
     }
-    bookmarks.Add(bookmarkName, range)
+    bookmarks.Add(normalizedName, range)
   }
   catch (error) {
     logWarn("Finalize", `Failed to restore bookmark \"${bookmarkName}\" after unlinking field.`, error)

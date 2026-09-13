@@ -61,13 +61,13 @@ export function notifyTaskpaneCitationsRefreshed() {
     channel.close()
   }
   catch {
-    // Ignore environments without BroadcastChannel support.
+    // 环境不支持 BroadcastChannel 时忽略。
   }
 
   try {
     window.localStorage.setItem(TASKPANE_SYNC_STORAGE_KEY, payload)
   }
   catch {
-    // Ignore storage write failures.
+    // 存储写入失败时忽略。
   }
 }

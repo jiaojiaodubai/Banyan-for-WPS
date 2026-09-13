@@ -75,8 +75,8 @@ function OnGetLabel(control: RibbonControl) {
 
 function OnAction(arg1: unknown, arg2?: unknown) {
   const isControl = (v: unknown): v is RibbonControl => typeof v === "object" && v !== null && "Id" in v
-  // Standard Office behavior for toggleButton onAction is (control, pressed).
-  // WPS currently may pass reversed arguments for toggleButton: (pressed, control).
+  // toggleButton 的 onAction 标准 Office 行为是 (control, pressed)，
+  // 而 WPS 目前可能传入反序参数：(pressed, control)。
   const control = isControl(arg2) ? arg2 : arg1 as RibbonControl
 
   switch (control.Id) {
@@ -156,7 +156,7 @@ function broadcastThemeMode(mode: ThemeMode) {
     channel.close()
   }
   catch {
-    // Ignore environment without BroadcastChannel support.
+    // 环境不支持 BroadcastChannel 时忽略。
   }
 }
 
@@ -210,7 +210,7 @@ function OnGetVisible(_control: RibbonControl) {
   return true
 }
 
-// Expose callbacks for WPS ribbon runtime
+// 向 WPS Ribbon 运行时暴露回调
 export type RibbonCallbacks = {
   OnAddinLoad: typeof OnAddinLoad
   OnGetLabel: typeof OnGetLabel

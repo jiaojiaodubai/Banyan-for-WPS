@@ -1,8 +1,42 @@
-import type { Item, ItemType } from "./item";
+import type { Creator, CreatorType, Item } from "./item";
 import type { RichText, Unit } from "./unit";
 
 type CitationType = "intext-citation" | "note-citation";
 type MaybePromise<T> = T | Promise<T>;
+
+type ScriptSafeObject<T extends object> = {
+  readonly [
+    K in keyof T as ScriptSafe<T[K]> extends never ? never : K
+  ]-?: ScriptSafe<T[K]>;
+};
+
+/**
+ * Readonly, "safe" structural view of a host value handed to style scripts.
+ *
+ * Every object is recursively made `readonly`; functions are kept callable.
+ * At runtime the sandbox wraps these views with a proxy so that reading a
+ * missing property returns the empty string `""` instead of `undefined`
+ * (arrays keep their native indexing and method behavior). Scripts should
+ * therefore never assume `undefined` from a missing key — always test
+ * against `""` when a value may be absent.
+ */
+export type ScriptSafe<T> = T extends undefined
+  ? never
+  : T extends (...args: unknown[]) => unknown
+    ? T
+    : T extends string
+      ? string
+      : T extends number
+        ? number
+        : T extends boolean
+          ? boolean
+          : T extends readonly (infer U)[]
+            ? readonly ScriptSafe<U>[]
+            : T extends (infer U)[]
+              ? readonly ScriptSafe<U>[]
+              : T extends object
+                ? ScriptSafeObject<T>
+                : T;
 
 /**
  * Host-side normalized style API.
@@ -54,14 +88,15 @@ export type StyleFile = StyleSummary & {
 type ComponentBase = {
   id: string;
   label: string;
-  disabled?: boolean;
 };
 
 type CitationComponentBase = ComponentBase;
 
 type CiteComponentBase = ComponentBase & {
-  // If provided, this control is only shown for matched item types.
-  itemType?: ItemType[];
+  /** Evaluate in the style sandbox once when the cite popup opens. */
+  visible?: CiteVisibilityPredicate;
+  /** Evaluate in the style sandbox whenever cite params change. */
+  disabled?: CiteDisabledPredicate;
 };
 
 type CheckboxComponent = {
@@ -93,8 +128,8 @@ export type CiteStyleComponent =
 export type StyleComponent = CitationStyleComponent | CiteStyleComponent;
 
 export type StyleUI = {
-  cite: StyleComponent[];
-  citation: StyleComponent[];
+  cite: CiteStyleComponent[];
+  citation: CitationStyleComponent[];
 };
 
 export type CitationContext = CitationSource & {
@@ -114,20 +149,42 @@ export type Cite = {
   params?: { [key: string]: string | boolean };
 };
 
-/** Readonly view exposed to style scripts via the global `contexts`. */
-export type ScriptContext = DeepReadonly<CitationContext>;
+export type CiteVisibilityPredicate = (item: Readonly<Item>) => boolean;
 
+export type CiteDisabledPredicate = (cite: Readonly<Cite>) => boolean;
+
+/**
+ * Item view exposed to scripts (e.g. `cite.item` inside `contexts`): a
+ * readonly {@link ScriptSafe} view of the normalized Banyan item. Known
+ * schema fields keep their declared types; keys not covered by the schema
+ * stay readable and type as `any`. Absent fields read as `""` at runtime,
+ * never `undefined`. `extra` is an already-parsed key/value object — read
+ * values with `getExtraValue(item, key)`.
+ */
+export type ScriptItem = ScriptSafe<Item> & {
+  readonly [field: string]: any;
+};
+
+export type ScriptCreator<T extends CreatorType = CreatorType> = ScriptSafe<
+  Creator<T>
+>;
+
+/** Safe readonly view exposed to style scripts via the global `contexts`. */
+export type ScriptCitationParams = ScriptSafe<CitationParams>;
+
+export type ScriptCite = ScriptSafe<Cite>;
+
+export type ScriptCitationSource = ScriptSafe<CitationSource>;
+
+export type ScriptContext = ScriptSafe<CitationContext>;
+
+/**
+ * The readonly global `contexts` that the sandbox injects before
+ * `generate()` runs. Each element is a safe view of one citation context;
+ * missing object properties read as `""` while array indexing/methods stay
+ * native. `contexts.length` always equals the number of citations to emit.
+ */
 export type ScriptContexts = readonly ScriptContext[];
-
-type DeepReadonly<T> = T extends (...args: unknown[]) => unknown
-  ? T
-  : T extends readonly (infer U)[]
-    ? readonly DeepReadonly<U>[]
-    : T extends (infer U)[]
-      ? readonly DeepReadonly<U>[]
-      : T extends object
-        ? { readonly [K in keyof T]: DeepReadonly<T[K]> }
-        : T;
 
 export type ScriptResult<T extends CitationType = CitationType> = {
   citations: ScriptCitationsMap[T];
@@ -165,6 +222,7 @@ export type NoteCitation = Citation<"note-citation"> & {
 };
 
 export type BibliographyTitle = {
+  id: string;
   type: "bibliography-title";
   content: RichText;
 };
@@ -193,6 +251,7 @@ export type ScriptNoteCitation = ScriptCitation & {
 };
 
 type ScriptBibliographyTitle = {
+  id: string;
   // JS object literal inference widens string properties; keep script-side
   // types permissive and rely on runtime validation for exact tag checking.
   type: "bibliography-title" | string;

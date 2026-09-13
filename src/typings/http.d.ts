@@ -6,7 +6,6 @@ import type {
   NoteCitation,
   StyleInfo,
   StyleSummary,
-  StyleUI,
 } from "./style";
 
 /**
@@ -21,6 +20,7 @@ export type RouteTable = {
     res: ShowInLibraryResponseData;
   };
   style: { req: StyleRequestData; res: StyleResponseData };
+  "style/list": { req: StyleListRequestData; res: StyleListResponseData };
   citation: { req: CitationRequestData; res: CitationResponseData };
   bibliography: {
     req: BibliographyRequestData;
@@ -57,12 +57,18 @@ export type StyleIdentifier = Pick<StyleInfo, "id" | "title">;
 export type StyleRequestData =
   (StyleIdentifier & { documentId: string }) | { documentId: string };
 export type StyleResponseData = StyleSummary | null;
+export type StyleListRequestData = Record<string, never>;
+export type StyleListEntry = StyleSummary;
+export type StyleListResponseData = StyleListEntry[];
 
 /* Citation dialog */
 export type CitationRequestData = {
   documentId: string;
-  style: StyleIdentifier | StyleUI;
+  style: StyleIdentifier;
   source?: CitationSource;
+};
+export type CitationDialogRequestData = Omit<CitationRequestData, "style"> & {
+  style: StyleIdentifier | import("./style").StyleUI;
 };
 export type CitationResponseData = CitationSource | null;
 

@@ -277,6 +277,7 @@ WPS API / HTTP API
 - `applyCitationStyle(field)` - 应用引注样式
 - `addBookmarkToField(field, bookmarkName)` - 添加书签
 - `getBibliographyBookmarkName(entryId)` - 获取参考文献书签名
+- `normalizeBookmarkName(name)` - 按 Word/WPS 规则归一化书签名（字母开头，仅字母/数字/下划线，最长 40 个字符）
 
 **Token 渲染**：
 
@@ -480,7 +481,7 @@ style.BaseStyle = wps.Enum.wdStyleDefaultParagraphFont
 #### 添加书签
 
 ```typescript
-wps.ActiveDocument.Bookmarks.Add("书签名", range)
+wps.ActiveDocument.Bookmarks.Add(normalizeBookmarkName("书签名"), range)
 ```
 
 #### 超链接到书签
@@ -776,6 +777,8 @@ await withProgress("正在刷新引注...", async () => {
 - 大文档（50-200 个引注）
 - 超大文档（> 200 个引注）
 
-开发服务器运行期间，Ribbon 会显示“运行测试”按钮。点击后，加载项会创建临时文档，并依次运行 `test/` 下的 HTTP、域、刷新和参考文献表测试；测试完成后临时文档会被无保存关闭，并恢复原文档和选区。
+开发服务器运行期间，Ribbon 会显示“运行测试”按钮。点击后，加载项会创建临时文档，并依次运行 `test/` 下的 HTTP、域、citation、刷新和参考文献表测试；测试完成后临时文档会被无保存关闭，并恢复原文档和选区。citation 测试通过 `test/automation.ts` 的无对话框注入工具构造 item/source 并调用字段工厂，不触发 `\\style` 或 `\\citation` GUI 路由。
 
 测试结束时会弹窗显示通过数、失败数和性能指标数，并将完整报告覆盖写入桌面的 `Banyan-for-WPS-performance.log`。报告中的 `[PASS]`、`[FAIL]`、`[TIME]` 和 `[SUMMARY]` 行可供脚本或 Agent 直接读取。测试入口只在开发模式下加载，发布构建不包含测试代码。
+
+刷新性能测试还会将富文本渲染拆分为结果文本写入、字段样式、局部 mark 样式和链接处理，并在独立夹具中对照 `Application.Options` 的分页、拼写检查和语法检查开关；测试结束后会恢复这些选项及屏幕刷新状态。

@@ -1,6 +1,7 @@
 import type {
   BibliographyEntry,
   BibliographyLine,
+  BibliographyTitle,
   IntextCitation,
   NoteCitation,
 } from "../src/typings/style"
@@ -59,10 +60,13 @@ export function makeNoteCitation(id: string): NoteCitation {
 }
 
 export function makeBibliographyLines(count: number): BibliographyLine[] {
-  const lines: BibliographyLine[] = [{
+  // 后端契约：bibliography-title 也携带 id，域代码统一为 BANYAN_BIBLIOGRAPHY {id}。
+  const title: BibliographyTitle = {
+    id: "bib-title",
     type: "bibliography-title",
     content: { text: "References", marks: [] },
-  }]
+  }
+  const lines: BibliographyLine[] = [title]
   for (let i = 1; i <= count; i += 1) {
     const text = `${i}. Zhang. A representative bibliography entry for performance testing.`
     const entry: BibliographyEntry = {
@@ -79,7 +83,38 @@ export function makeBibliographyLines(count: number): BibliographyLine[] {
 }
 
 export function resetTestDocument(): void {
-  wps.ActiveDocument.Content.Text = "Banyan performance test. "
+  const document = wps.ActiveDocument
+
+  for (let i = document.Fields.Count; i >= 1; i -= 1) {
+    try {
+      const field = document.Fields.Item(i)
+      if (field.Locked) field.Locked = false
+      field.Delete()
+    }
+    catch {
+      // 临时测试文档的清理只做尽力而为。
+    }
+  }
+
+  for (let i = document.Footnotes.Count; i >= 1; i -= 1) {
+    try {
+      document.Footnotes.Item(i).Delete()
+    }
+    catch {
+      // 继续清理剩余的测试残留。
+    }
+  }
+
+  for (let i = document.Bookmarks.Count; i >= 1; i -= 1) {
+    try {
+      document.Bookmarks.Item(i).Delete()
+    }
+    catch {
+      // 即使 WPS 暴露出受保护的书签也继续。
+    }
+  }
+
+  document.Content.Text = "Banyan performance test. "
 }
 
 export function getDocumentEnd(): Wps.Range {

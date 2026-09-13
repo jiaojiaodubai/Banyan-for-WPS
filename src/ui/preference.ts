@@ -4,6 +4,7 @@ import { useI10n } from "../utils/i10n"
 import { logError } from "../utils/log"
 import { getPreference, savePreference, type Preference } from "../modules/preference"
 import { refreshForStyleChange } from "../modules/refresh"
+import { applyChapterBibliographyStyles } from "../modules/bibliography"
 import "./components/banyan-checkbox"
 import type { BanyanCheckboxElement } from "./components/banyan-checkbox"
 
@@ -96,6 +97,8 @@ type OptionKey = "syncItems" | "refreshAll"
 let currentThemeMode: ThemeMode | null = null
 let themeChannel: BroadcastChannel | null = null
 let initialStyle: Preference["style"] | undefined
+// 章节 Word 样式名的初始值：保存时只有真的改名了才需要重新套用。
+let initialBibliographyStyles: { title: string; entry: string } | null = null
 
 let nodes!: {
   global: HTMLHeadingElement
@@ -249,6 +252,10 @@ async function loadPreference() {
     }
 
     initialStyle = cloneStyle(pref.style)
+    initialBibliographyStyles = {
+      title: pref.bibliographyTitleStyle,
+      entry: pref.bibliographyEntryStyle,
+    }
 
     state.syncItems = pref.syncItems
     state.refreshAll = pref.refreshAll
@@ -300,8 +307,15 @@ async function saveAndClose() {
     state.bibliographyTitleStyle = nodes.bibTitleStyle.value.trim()
     state.bibliographyEntryStyle = nodes.bibEntryStyle.value.trim()
     const previousStyle = cloneStyle(initialStyle)
+    const bibliographyStylesChanged = initialBibliographyStyles !== null
+      && (initialBibliographyStyles.title !== state.bibliographyTitleStyle
+        || initialBibliographyStyles.entry !== state.bibliographyEntryStyle)
     savePreference(state)
     await refreshForStyleChange(previousStyle, state.style)
+    if (bibliographyStylesChanged) {
+      // 只是改名：把新样式名套到当前章节的书目域即可，不需要重渲染内容。
+      await applyChapterBibliographyStyles(state)
+    }
     disposeThemeSync()
     window.close()
   }

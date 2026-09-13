@@ -15,6 +15,7 @@ export type PerformanceMetric = {
   size?: number
   mode?: string
   iterations?: number
+  statistic?: "single" | "median"
 }
 
 type TestCallback = () => void | Promise<void>
@@ -102,8 +103,30 @@ export class TestContext {
     const startedAt = performance.now()
     await callback()
     const totalMs = performance.now() - startedAt
-    this.metrics.push({ module, name, totalMs, ...options })
+    this.metrics.push({ module, name, totalMs, statistic: "single", ...options })
     return totalMs
+  }
+
+  /** Measure independent samples and report the median to reduce host noise. */
+  async measureMedian(
+    module: string,
+    name: string,
+    callback: () => void | Promise<void>,
+    options: Pick<PerformanceMetric, "size" | "mode" | "iterations"> = {},
+    samples = 3,
+    prepare?: () => void | Promise<void>,
+  ): Promise<number> {
+    const values: number[] = []
+    for (let i = 0; i < samples; i += 1) {
+      await prepare?.()
+      const startedAt = performance.now()
+      await callback()
+      values.push(performance.now() - startedAt)
+    }
+    values.sort((a, b) => a - b)
+    const medianMs = values[Math.floor(values.length / 2)]
+    this.metrics.push({ module, name, totalMs: medianMs, statistic: "median", ...options })
+    return medianMs
   }
 
   fail(module: string, name: string, error: unknown): void {

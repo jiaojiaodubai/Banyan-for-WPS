@@ -7,20 +7,20 @@ import { findPreviousChapterBreak } from "./chapter-break"
 export type PrefStyle = Pick<StyleInfo, "id" | "title" | "citationType">
 
 export type GlobalPreference = {
-  // global, sync item metadata from Zotero client when refreashing, or only sync item metadata when inserting/editing citations
+  // 全局：刷新时从 Zotero 客户端同步条目元数据，或仅在插入/编辑引注时同步
   syncItems: boolean
-  // global, refresh fields in all chapters when refreshing, or only refresh fields in the current chapter (between the previous and next chapter breaks)
+  // 全局：刷新时处理全部章节的域，或只处理当前章节（前后两个章节分隔符之间）
   refreshAll: boolean
 }
 
 export type ChapterPreference = {
-  // chapter-level
+  // 章节级
   style: PrefStyle
-  // chapter-level, uncited sources added manually in bibliography editor
+  // 章节级：在书目编辑器中手工添加的未被引用的文献
   extraSource?: CitationSource
-  // chapter-level, Word style name for bibliography title, required for first chapter, inherited by subsequent chapters
+  // 章节级：书目标题的 Word 样式名，首章必填，后续章节继承
   bibliographyTitleStyle: string
-  // chapter-level, Word style name for bibliography entry, required for first chapter, inherited by subsequent chapters
+  // 章节级：书目题录的 Word 样式名，首章必填，后续章节继承
   bibliographyEntryStyle: string
 }
 

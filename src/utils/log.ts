@@ -71,7 +71,7 @@ function writeDesktopLog(content: string): void {
     }
   }
   catch {
-    // Do not throw if debug log persistence fails.
+    // 调试日志落盘失败时不抛错。
   }
 }
 

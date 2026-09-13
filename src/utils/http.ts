@@ -6,6 +6,7 @@ const OFFLINE_ALERT_MESSAGE =
 
 export const DEFAULT_ZOTERO_PORT = "23119"
 export const FALLBACK_ZOTERO_PORT = "23124"
+const ZOTERO_API_HOST = "127.0.0.1"
 
 let activeZoteroPort = DEFAULT_ZOTERO_PORT
 
@@ -17,11 +18,11 @@ function getCandidatePorts(): string[] {
 }
 
 export function getZoteroApiBaseUrl(): string {
-  return `http://localhost:${activeZoteroPort}/api/`
+  return `http://${ZOTERO_API_HOST}:${activeZoteroPort}/api/`
 }
 
 export function getBanyanApiBaseUrl(): string {
-  return `http://localhost:${activeZoteroPort}/banyan`
+  return `http://${ZOTERO_API_HOST}:${activeZoteroPort}/banyan`
 }
 
 export function getDocumentId(): string {
@@ -62,7 +63,7 @@ async function requestAtPort<T extends HttpPath>(
   path: T,
   data: RouteTable[T]["req"],
 ): Promise<RouteTable[T]["res"] | null> {
-  const url = `http://localhost:${port}/banyan/${path}`
+  const url = `http://${ZOTERO_API_HOST}:${port}/banyan/${path}`
   const requestInit: RequestInit = {
     method: "POST",
     headers: {

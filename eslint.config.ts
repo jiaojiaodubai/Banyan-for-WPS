@@ -25,6 +25,14 @@ export default defineConfig([
   },
   tseslint.configs.recommended,
   {
+    // src/typings 下的 .d.ts 逐字镜像后端契约，其中的 `any` 属于契约本身
+    // （例如 style script 的安全视图允许未知键），不按本项目代码规范检查。
+    files: ["src/typings/**/*.d.ts"],
+    rules: {
+      "@typescript-eslint/no-explicit-any": "off",
+    },
+  },
+  {
     files: ["src/**/*.{ts,mts}", "test/**/*.{ts,mts}", "./*.ts"],
     plugins: { "@stylistic": stylistic },
     rules: {

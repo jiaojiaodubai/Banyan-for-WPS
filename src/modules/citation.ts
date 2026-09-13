@@ -8,14 +8,12 @@ import {
   createNoteCitationAtRange,
   createPlaceholderIntextCitationData,
   createPlaceholderNoteCitationData,
-  applyIntextCitationStyle,
   asStyleIdentifier,
   isIntextCitation,
   isNoteCitation,
   readFieldData,
   removeFieldSafely,
   removeFootnoteSafely,
-  renderStyledField,
   FieldAndData,
 } from "../utils/field"
 import { IntextCitation, NoteCitation } from "../typings/style"
@@ -183,7 +181,6 @@ async function editIntextCitation(
   if (!newSource) return false
   data.source = newSource
   field.Data = JSON.stringify(data)
-  renderStyledField(field, applyIntextCitationStyle)
   return true
 }
 

@@ -1,5 +1,21 @@
-import { CitationContext, CitationsMap } from "../typings/style"
-import { applyIntextCitationStyle, asStyleIdentifier, collectIntextCitationFieldsInRange, collectNoteCitationFootnotesInRange, isBibliographyEntry, isBibliographyTitle, isIntextCitation, isNoteCitation, migrateIntextCitationsToNotes, migrateNoteCitationsToIntext, rebuildNoteCitationAtRange, renderStyledField } from "../utils/field"
+import { CitationContext, CitationsMap, IntextCitation, NoteCitation } from "../typings/style"
+import {
+  applyIntextCitationStyle,
+  asStyleIdentifier,
+  collectIntextCitationFieldsInRange,
+  collectNoteCitationFootnotesInRange,
+  fieldContentEquals,
+  isBibliographyEntry,
+  isBibliographyTitle,
+  isIntextCitation,
+  isNoteCitation,
+  migrateIntextCitationsToNotes,
+  migrateNoteCitationsToIntext,
+  readFieldDataWithText,
+  rebuildNoteCitationAtRange,
+  richTextEquals,
+  renderStyledFieldWithData,
+} from "../utils/field"
 import { RefreshResponseData } from "../typings/http"
 import { request, getDocumentId } from "../utils/http"
 import { useI10n } from "../utils/i10n"
@@ -9,7 +25,13 @@ import type { PrefStyle } from "./preference"
 import { getPreference } from "./preference"
 import { findPreviousChapterBreak, getUpdateRange } from "./chapter-break"
 import { notifyTaskpaneCitationsRefreshed } from "./taskpane"
-import { collectBibliographyFieldsInRange, deleteExistingBibliography, insertBibliography } from "./bibliography"
+import {
+  collectBibliographyFieldsInRange,
+  deleteExistingBibliography,
+  insertBibliography,
+  updateBibliographyInPlace,
+} from "./bibliography"
+import { withBatchUpdate } from "../utils/batch-update"
 
 const REFRESH_MESSAGE_ZH = {
   progressReason: "正在刷新引注...",
@@ -38,6 +60,14 @@ function isSameStyle(
     && previousStyle.citationType === nextStyle.citationType
 }
 
+function indexCitationResponses(citations: RefreshResponseData["citations"]): Map<string, RefreshResponseData["citations"][number]> {
+  const index = new Map<string, RefreshResponseData["citations"][number]>()
+  for (const citation of citations) {
+    index.set(citation.id, citation)
+  }
+  return index
+}
+
 function moveCaretBeforeField(field: Wps.Field): void {
   const docStart = wps.ActiveDocument.Content.Start
   const caret = wps.ActiveDocument.Range().Duplicate
@@ -60,28 +90,36 @@ async function refreshBibliographyInRange(
   range: Wps.Range,
   respond: RefreshResponseData,
   prefs: NonNullable<Awaited<ReturnType<typeof getPreference>>>,
-) {
+) : Promise<boolean> {
   if (!respond.bibliography || respond.bibliography.length === 0) {
-    return
+    return false
   }
 
   const lines = respond.bibliography.filter((line) =>
     isBibliographyTitle(line) || isBibliographyEntry(line)
   )
   if (lines.length === 0) {
-    return
+    return false
   }
 
   const bibliographyFields = collectBibliographyFieldsInRange(range)
   const firstBibliographyField = bibliographyFields[0]
   if (!firstBibliographyField) {
-    return
+    return false
+  }
+
+  // 书目身份与顺序未变时保留现有域对象，避免普通刷新（只有源信息变化或什么都
+  // 没变）把每条题录删掉重建。
+  const inPlaceResult = updateBibliographyInPlace(range, lines, prefs)
+  if (inPlaceResult !== null) {
+    return inPlaceResult
   }
 
   const insertRange = firstBibliographyField.Result.Duplicate
   insertRange.Collapse(wps.Enum.wdCollapseStart)
   deleteExistingBibliography(range)
   insertBibliography(insertRange, lines, prefs)
+  return true
 }
 
 export async function onRefreshEvent() {
@@ -109,7 +147,7 @@ export async function refreshForStyleChange(
     return false
   }
 
-  return withProgress(t("refresh.progressReason"), async () => {
+  return withBatchUpdate("Banyan Refresh", () => withProgress(t("refresh.progressReason"), async () => {
     if (previousStyle && previousStyle.citationType !== nextStyle.citationType) {
       const rangeToMigrate = getUpdateRange()
       if (nextStyle.citationType === "note-citation") {
@@ -123,10 +161,14 @@ export async function refreshForStyleChange(
     const refreshed = await refresh(getUpdateRange())
     notifyTaskpaneCitationsRefreshed()
     return refreshed
-  })
+  }))
 }
 
 export async function refresh(range?: Wps.Range, syncItems?: boolean): Promise<boolean> {
+  return withBatchUpdate("Banyan Refresh", () => refreshInRange(range, syncItems))
+}
+
+async function refreshInRange(range?: Wps.Range, syncItems?: boolean): Promise<boolean> {
   range = range ?? getUpdateRange()
   const prefs = await getPreference()
   if (!prefs) {
@@ -134,101 +176,234 @@ export async function refresh(range?: Wps.Range, syncItems?: boolean): Promise<b
     return false
   }
   if (prefs.style.citationType === "intext-citation" as keyof CitationsMap) {
-    const pairs: { field: Wps.Field, context: CitationContext }[] = []
-    for (const { field, data } of collectIntextCitationFieldsInRange(range)) {
-      // 断言获取页码时返回的是 number 类型
-      const page = field.Result.Information(wps.Enum.wdActiveEndPageNumber) as number
-      pairs.push({
-        field,
-        context: {
-          id: data.id,
-          page,
-          ...data.source
-        },
-      })
-    }
-    if (pairs.length === 0) {
+    const collected = collectIntextCitationFieldsInRange(range)
+    if (collected.length === 0) {
       logWarn("Refresh", "No intext citations found; deleting existing bibliography and stopping refresh.")
       return deleteExistingBibliography(range)
     }
+
+    // 请求阶段就把每个引注的数据读出来，并把已存文本缓存到 pair 上：更新阶段
+    // 据此判定「无变化」而不再触碰 Field.Data（懒解析）。id 一律取收集阶段从
+    // 域代码解析出的结果（重复项已在收集时重键）。
+    const pairs: IntextRefreshPair[] = []
+    const contexts: CitationContext[] = []
+    for (const pair of collected) {
+      const { text, data } = readFieldDataWithText<IntextCitation>(pair.field)
+      if (!data || !isIntextCitation(data)) {
+        logWarn("Refresh", `Could not read data of intext citation ${pair.id}, skipping.`)
+        continue
+      }
+      // 断言获取页码时返回的是 number 类型
+      const page = pair.field.Result.Information(wps.Enum.wdActiveEndPageNumber) as number
+      const context: CitationContext = {
+        id: pair.id,
+        page,
+        ...data.source
+      }
+      contexts.push(context)
+      pairs.push({ field: pair.field, data, text, context })
+    }
+    if (pairs.length === 0) {
+      logWarn("Refresh", "No readable intext citation data; skipping this chapter.")
+      return false
+    }
+
     const respond = await request("refresh", {
       documentId: getDocumentId(),
       style: asStyleIdentifier(prefs.style),
-      contexts: pairs.map((pair) => pair.context),
+      contexts,
       syncItems: syncItems ?? prefs.syncItems,
     })
     if (!respond) {
       logWarn("Refresh", "Could not get response from /refresh, skipping this chapter.")
       return false
     }
-    for (const { field, context } of pairs) {
-      const updatedData = respond.citations.find((c) => c.id === context.id)
+    const responseIndex = indexCitationResponses(respond.citations)
+    let didUpdateCitation = false
+    for (const pair of pairs) {
+      const updatedData = responseIndex.get(pair.context.id)
       if (!updatedData) {
-        logWarn("Refresh", `No updated data found for citation with id ${context.id}, skipping.`)
+        logWarn("Refresh", `No updated data found for citation with id ${pair.context.id}, skipping.`)
         continue
       }
       if (!isIntextCitation(updatedData)) {
-        logWarn("Refresh", `Updated data for citation with id ${context.id} is not a valid intext citation, skipping.`)
+        logWarn("Refresh", `Updated data for citation with id ${pair.context.id} is not a valid intext citation, skipping.`)
         continue
       }
-      field.Data = JSON.stringify(updatedData)
-      renderStyledField(field, applyIntextCitationStyle, updatedData.content)
+      const nextJson = JSON.stringify(updatedData)
+      if (nextJson.length === 0) {
+        logWarn("Refresh", `Could not serialize updated data for citation with id ${pair.context.id}, skipping.`)
+        continue
+      }
+      // 与请求前缓存的文本相同：整个域都不需要触碰。
+      if (pair.text === nextJson) continue
+      if (applyIntextCitationData(pair.field, updatedData, pair.data)) {
+        didUpdateCitation = true
+      }
     }
-    // Refresh bibliography if exists
-    await refreshBibliographyInRange(range, respond, prefs)
+    // 顺带刷新已有的书目
+    const bibliographyChanged = await refreshBibliographyInRange(range, respond, prefs)
+    return bibliographyChanged || didUpdateCitation
   }
   else if (prefs.style.citationType === "note-citation" as keyof CitationsMap) {
-    const pairs: { note: Wps.Footnote, field: Wps.Field, context: CitationContext }[] = []
-    for (const { note: footnote, field, data } of collectNoteCitationFootnotesInRange(range)) {
-      // 断言获取页码时返回的是 number 类型
-      const page = field.Result.Information(wps.Enum.wdActiveEndPageNumber) as number
-      pairs.push({
-        note: footnote,
-        field,
-        context: {
-          id: data.id,
-          page,
-          ...data.source
-        },
-      })
-    }
-    if (pairs.length === 0) {
+    const collected = collectNoteCitationFootnotesInRange(range)
+    if (collected.length === 0) {
       logWarn("Refresh", "No note citations found; deleting existing bibliography and stopping refresh.")
       return deleteExistingBibliography(range)
     }
+
+    // 与正文引注同理：请求阶段缓存已存文本与对象，更新阶段据此跳过无变化的引注。
+    const pairs: NoteRefreshPair[] = []
+    const contexts: CitationContext[] = []
+    for (const pair of collected) {
+      const { text, data } = readFieldDataWithText<NoteCitation>(pair.field)
+      if (!data || !isNoteCitation(data)) {
+        logWarn("Refresh", `Could not read data of note citation ${pair.id}, skipping.`)
+        continue
+      }
+      // 断言获取页码时返回的是 number 类型
+      const page = pair.field.Result.Information(wps.Enum.wdActiveEndPageNumber) as number
+      const context: CitationContext = {
+        id: pair.id,
+        page,
+        ...data.source
+      }
+      contexts.push(context)
+      pairs.push({ note: pair.note, field: pair.field, data, text, context })
+    }
+    if (pairs.length === 0) {
+      logWarn("Refresh", "No readable note citation data; skipping this chapter.")
+      return false
+    }
+
     const respond = await request("refresh", {
       documentId: getDocumentId(),
       style: asStyleIdentifier(prefs.style),
-      contexts: pairs.map((pair) => pair.context),
+      contexts,
       syncItems: syncItems ?? prefs.syncItems,
     })
     if (!respond) {
       logWarn("Refresh", "Could not get response from /refresh, skipping this chapter.")
       return false
     }
+    const responseIndex = indexCitationResponses(respond.citations)
+    let didUpdateCitation = false
+    // 重建脚注会重活范围：倒序遍历。
     for (let i = pairs.length - 1; i >= 0; i -= 1) {
-      const { note, field, context } = pairs[i]
-      const updatedData = respond.citations.find((c) => c.id === context.id)
+      const pair = pairs[i]
+      const updatedData = responseIndex.get(pair.context.id)
       if (!updatedData) {
-        logWarn("Refresh", `No updated data found for citation with id ${context.id}, skipping.`)
+        logWarn("Refresh", `No updated data found for citation with id ${pair.context.id}, skipping.`)
         continue
       }
       if (!isNoteCitation(updatedData)) {
-        logWarn("Refresh", `Updated data for citation with id ${context.id} is not a valid note citation, skipping.`)
+        logWarn("Refresh", `Updated data for citation with id ${pair.context.id} is not a valid note citation, skipping.`)
         continue
       }
-      const rebuilt = rebuildNoteCitationAtRange(note, field, updatedData)
-      if (!rebuilt) {
-        logWarn("Refresh", `Failed to rebuild note citation with id ${context.id}, skipping.`)
+      const nextJson = JSON.stringify(updatedData)
+      if (nextJson.length === 0) {
+        logWarn("Refresh", `Could not serialize updated data for citation with id ${pair.context.id}, skipping.`)
+        continue
+      }
+      if (pair.text === nextJson) continue
+      if (applyNoteCitationData(pair.note, pair.field, updatedData, pair.data)) {
+        didUpdateCitation = true
       }
     }
-    // Refresh bibliography if exists
-    await refreshBibliographyInRange(range, respond, prefs)
+    // 顺带刷新已有的书目
+    const bibliographyChanged = await refreshBibliographyInRange(range, respond, prefs)
+    return didUpdateCitation || bibliographyChanged
+  }
+  return true
+}
+
+type CitationFieldPairData<T extends IntextCitation | NoteCitation> = {
+  field: Wps.Field
+  data: T
+}
+
+type IntextRefreshPair = CitationFieldPairData<IntextCitation> & {
+  text: string
+  context: CitationContext
+}
+
+type NoteRefreshPair = CitationFieldPairData<NoteCitation> & {
+  note: Wps.Footnote
+  text: string
+  context: CitationContext
+}
+
+/**
+ * 把响应数据写到正文引注。`Field.Data` 是一个整体序列化字符串，没有可原地修补
+ * 的局部，因此除文本完全相同（已在调用处跳过）外一律原样落盘；content 比较
+ * 只作为渲染门禁。原样落盘还能让下次刷新的文本短路继续命中。
+ */
+function applyIntextCitationData(
+  field: Wps.Field,
+  updatedData: IntextCitation,
+  currentData: IntextCitation | null,
+): boolean {
+  const contentChanged = currentData === null
+    ? true
+    : !fieldContentEquals(currentData, updatedData)
+  try {
+    field.Data = JSON.stringify(updatedData)
+  }
+  catch (error) {
+    logWarn("Refresh", `Failed to write updated data for citation with id ${updatedData.id}, skipping render.`, error)
+    return false
+  }
+  if (contentChanged) {
+    renderStyledFieldWithData(field, applyIntextCitationStyle, updatedData, updatedData.content)
+  }
+  return true
+}
+
+/**
+ * 把响应数据写到脚注引注：先比 reference（更短）、再比内容，只有呈现变化时
+ * 才重建域与脚注；否则仅落数据。
+ */
+function applyNoteCitationData(
+  note: Wps.Footnote,
+  field: Wps.Field,
+  updatedData: NoteCitation,
+  currentData: NoteCitation | null,
+): boolean {
+  let presentationChanged: boolean
+  if (currentData === null) {
+    presentationChanged = true
+  }
+  else {
+    presentationChanged = !richTextEquals(currentData.reference, updatedData.reference)
+    if (!presentationChanged) {
+      presentationChanged = !fieldContentEquals(currentData, updatedData)
+    }
+  }
+
+  if (presentationChanged) {
+    const rebuilt = rebuildNoteCitationAtRange(note, field, updatedData)
+    if (!rebuilt) {
+      logWarn("Refresh", `Failed to rebuild note citation with id ${updatedData.id}, skipping.`)
+      return false
+    }
+    return true
+  }
+
+  try {
+    field.Data = JSON.stringify(updatedData)
+  }
+  catch (error) {
+    logWarn("Refresh", `Failed to write updated data for note citation with id ${updatedData.id}.`, error)
+    return false
   }
   return true
 }
 
 export async function refreshAll(syncItems?: boolean): Promise<void> {
+  await withBatchUpdate("Banyan Refresh", () => refreshAllInDocument(syncItems))
+}
+
+async function refreshAllInDocument(syncItems?: boolean): Promise<void> {
   const prefs = await getPreference()
   if (!prefs?.style) {
     return

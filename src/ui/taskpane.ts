@@ -244,7 +244,7 @@ function setupSelectionSync(): void {
     )
   }
   catch {
-    // Ignore environments without WPS selection events.
+    // 环境不支持 WPS 选区事件时忽略。
   }
 }
 
@@ -268,7 +268,7 @@ function disposeThemeSync(): void {
     )
   }
   catch {
-    // Ignore environments without WPS selection events.
+    // 环境不支持 WPS 选区事件时忽略。
   }
 }
 
