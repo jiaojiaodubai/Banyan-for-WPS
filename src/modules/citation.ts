@@ -11,6 +11,7 @@ import {
   asStyleIdentifier,
   isIntextCitation,
   isNoteCitation,
+  moveCaretToPosition,
   readFieldData,
   removeFieldSafely,
   removeFootnoteSafely,
@@ -72,6 +73,8 @@ export async function onCitationEvent() {
   const paragraph = range.Paragraphs.Last.Range.Duplicate
 
   let updated = false
+  // 插入脚注引注后要回移到的正文位置。
+  let caretAfterNoteReference: number | null = null
   switch (pref.style.citationType) {
     case "intext-citation": {
       let found = false
@@ -120,7 +123,12 @@ export async function onCitationEvent() {
         }
       }
       if (!found) {
-        updated = await addNoteCitation(range, asStyleIdentifier(pref.style))
+        const note = await addNoteCitation(range, asStyleIdentifier(pref.style))
+        if (note) {
+          // 取引用末尾：插入点会落在引用之前，需要回移。
+          updated = true
+          caretAfterNoteReference = note.Reference.End
+        }
       }
       break
     }
@@ -139,6 +147,11 @@ export async function onCitationEvent() {
     }
     notifyTaskpaneCitationsRefreshed()
   })
+
+  // 刷新可能重建脚注再次挪动插入点，故回移放在刷新之后。
+  if (caretAfterNoteReference !== null) {
+    moveCaretToPosition(caretAfterNoteReference)
+  }
 }
 
 async function addIntextCitation(
@@ -187,7 +200,7 @@ async function editIntextCitation(
 async function addNoteCitation(
   range: Wps.Range,
   style: StyleIdentifier
-): Promise<boolean> {
+): Promise<Wps.Footnote | null> {
   const id = crypto.randomUUID()
   const data = createPlaceholderNoteCitationData(id, createEmptyCitationSource())
   const { note, field } = insertNoteCitation(range, data)
@@ -199,11 +212,11 @@ async function addNoteCitation(
     })
     if (!source) {
       removeFootnoteSafely(note)
-      return false
+      return null
     }
     data.source = source
     field.Data = JSON.stringify(data)
-    return true
+    return note
   }
   catch (error) {
     removeFootnoteSafely(note)

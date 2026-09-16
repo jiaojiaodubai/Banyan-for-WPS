@@ -83,7 +83,7 @@ export async function runCitationTests(context: TestContext): Promise<void> {
       }, { size, mode: "data-only" })
       await context.measure(MODULE, "rerender updated citations", () => {
         for (let i = 0; i < fields.length; i += 1) {
-          renderStyledFieldWithData(fields[i], applyIntextCitationStyle, updates[i], updates[i].content)
+          renderStyledFieldWithData(fields[i], applyIntextCitationStyle, updates[i], updates[i].content, "character")
         }
       }, { size, mode: "content-changed" })
       assert.equal(collectIntextCitationFieldsInRange(wps.ActiveDocument.Content).length, size)
@@ -121,7 +121,7 @@ export async function runCitationTests(context: TestContext): Promise<void> {
         noOpDataWrites += 1
         if (!fieldContentEquals(current[i], unchanged[i])) {
           noOpRenders += 1
-          renderStyledFieldWithData(fields[i], applyIntextCitationStyle, unchanged[i], unchanged[i].content)
+          renderStyledFieldWithData(fields[i], applyIntextCitationStyle, unchanged[i], unchanged[i].content, "character")
         }
       }
     }, { size, mode: "skip-render" })
@@ -136,7 +136,7 @@ export async function runCitationTests(context: TestContext): Promise<void> {
         sourceOnlyDataWrites += 1
         if (!fieldContentEquals(current[i], sourceOnly[i])) {
           sourceOnlyRenders += 1
-          renderStyledFieldWithData(fields[i], applyIntextCitationStyle, sourceOnly[i], sourceOnly[i].content)
+          renderStyledFieldWithData(fields[i], applyIntextCitationStyle, sourceOnly[i], sourceOnly[i].content, "character")
         }
       }
     }, { size, mode: "data-only" })
@@ -149,7 +149,7 @@ export async function runCitationTests(context: TestContext): Promise<void> {
         fields[i].Data = JSON.stringify(contentChanged[i])
         if (!fieldContentEquals(sourceOnly[i], contentChanged[i])) {
           contentRenders += 1
-          renderStyledFieldWithData(fields[i], applyIntextCitationStyle, contentChanged[i], contentChanged[i].content)
+          renderStyledFieldWithData(fields[i], applyIntextCitationStyle, contentChanged[i], contentChanged[i].content, "character")
         }
       }
     }, { size, mode: "content-changed" })

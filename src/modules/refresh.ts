@@ -5,6 +5,7 @@ import {
   collectIntextCitationFieldsInRange,
   collectNoteCitationFootnotesInRange,
   fieldContentEquals,
+  getWholeFieldRange,
   isBibliographyEntry,
   isBibliographyTitle,
   isIntextCitation,
@@ -15,6 +16,7 @@ import {
   rebuildNoteCitationAtRange,
   richTextEquals,
   renderStyledFieldWithData,
+  restoreMainTextAfterNote,
 } from "../utils/field"
 import { RefreshResponseData } from "../typings/http"
 import { request, getDocumentId } from "../utils/http"
@@ -115,7 +117,8 @@ async function refreshBibliographyInRange(
     return inPlaceResult
   }
 
-  const insertRange = firstBibliographyField.Result.Duplicate
+  // 重建插入点取域起点（`Result.Start` 在域内部，同 VBA 的 ReplaceBibliography）。
+  const insertRange = getWholeFieldRange(firstBibliographyField)
   insertRange.Collapse(wps.Enum.wdCollapseStart)
   deleteExistingBibliography(range)
   insertBibliography(insertRange, lines, prefs)
@@ -148,6 +151,10 @@ export async function refreshForStyleChange(
   }
 
   return withBatchUpdate("Banyan Refresh", () => withProgress(t("refresh.progressReason"), async () => {
+    // 记下迁移前的选区（`getUpdateRange()` 以选区为锚），迁移后恢复，见 restoreRefreshSelection。
+    const originalRange = wps.Selection.Range.Duplicate
+    const originalStory = wps.Selection.StoryType
+
     if (previousStyle && previousStyle.citationType !== nextStyle.citationType) {
       const rangeToMigrate = getUpdateRange()
       if (nextStyle.citationType === "note-citation") {
@@ -156,12 +163,31 @@ export async function refreshForStyleChange(
       else {
         migrateNoteCitationsToIntext(rangeToMigrate)
       }
+      restoreRefreshSelection(originalRange, originalStory)
     }
 
     const refreshed = await refresh(getUpdateRange())
     notifyTaskpaneCitationsRefreshed()
     return refreshed
   }))
+}
+
+/**
+ * 恢复样式切换前的选区（对应 VBA 的 RestoreRefreshSelection）。
+ *
+ * `getUpdateRange()` 以选区为锚计算本章范围，而迁移会挪动插入点；原选区不在正文时
+ * 退回正文起点。
+ */
+function restoreRefreshSelection(originalRange: Wps.Range, originalStory: number): void {
+  if (originalStory === wps.Enum.wdMainTextStory) {
+    originalRange.Select()
+    return
+  }
+
+  const caret = wps.ActiveDocument.Range().Duplicate
+  const contentStart = wps.ActiveDocument.Content.Start
+  caret.SetRange(contentStart, contentStart)
+  caret.Select()
 }
 
 export async function refresh(range?: Wps.Range, syncItems?: boolean): Promise<boolean> {
@@ -288,7 +314,7 @@ async function refreshInRange(range?: Wps.Range, syncItems?: boolean): Promise<b
     }
     const responseIndex = indexCitationResponses(respond.citations)
     let didUpdateCitation = false
-    // 重建脚注会重活范围：倒序遍历。
+    // 重建脚注会移动范围：倒序遍历。
     for (let i = pairs.length - 1; i >= 0; i -= 1) {
       const pair = pairs[i]
       const updatedData = responseIndex.get(pair.context.id)
@@ -354,7 +380,7 @@ function applyIntextCitationData(
     return false
   }
   if (contentChanged) {
-    renderStyledFieldWithData(field, applyIntextCitationStyle, updatedData, updatedData.content)
+    renderStyledFieldWithData(field, applyIntextCitationStyle, updatedData, updatedData.content, "character")
   }
   return true
 }
@@ -386,6 +412,8 @@ function applyNoteCitationData(
       logWarn("Refresh", `Failed to rebuild note citation with id ${updatedData.id}, skipping.`)
       return false
     }
+    // 重建脚注会把插入点留在脚注里，立即回移到引用之后。
+    restoreMainTextAfterNote(rebuilt.note)
     return true
   }
 

@@ -13,6 +13,7 @@ import {
   getBanyanFieldCode,
   getBibliographyBookmarkName,
   getBibliographyLineId,
+  getWholeFieldRange,
   isBibliographyEntry,
   isBibliographyTitle,
   isIntextCitation,
@@ -510,6 +511,7 @@ function patchBibliographyGaps(
       previousNext + 1,
       followingNext - 1,
       pref,
+      previousOld > 0,
       followingOld < fields.length && nextGapCount > 0,
     )) {
       return false
@@ -532,7 +534,7 @@ function replaceBibliographyBlock(
   block.Delete()
   const insertRange = wps.ActiveDocument.Range().Duplicate
   insertRange.SetRange(firstRange.start, firstRange.start)
-  return insertBibliographyLines(insertRange, lines, 0, lines.length - 1, pref, false)
+  return insertBibliographyLines(insertRange, lines, 0, lines.length - 1, pref, false, false)
 }
 
 function updateBibliographyField(
@@ -621,6 +623,7 @@ function insertBibliographyLines(
   firstIndex: number,
   lastIndex: number,
   pref: { bibliographyTitleStyle: string; bibliographyEntryStyle: string },
+  separatorBeforeFirst: boolean,
   separatorAfterLast: boolean,
 ): boolean {
   if (firstIndex > lastIndex) return true
@@ -628,6 +631,13 @@ function insertBibliographyLines(
   caret.Collapse(wps.Enum.wdCollapseStart)
 
   for (let i = firstIndex; i <= lastIndex; i += 1) {
+    // 行间用段落分隔符隔开；插入点不在行首时首行也要补（VBA 的
+    // separatorBeforeFirst），否则新块会并进上一行所在的段落。
+    if ((i === firstIndex && separatorBeforeFirst) || i > firstIndex) {
+      caret.InsertAfter("\r")
+      caret.Collapse(wps.Enum.wdCollapseEnd)
+    }
+
     const line = lines[i]
     const field = caret.Fields.Add(
       caret,
@@ -649,14 +659,15 @@ function insertBibliographyLines(
       addBookmarkToField(field, getBibliographyBookmarkName(line.id))
     }
 
-    const shouldSeparate = i < lastIndex || (i === lastIndex && separatorAfterLast)
-    if (shouldSeparate) {
-      field.Result.InsertParagraphAfter()
-      caret.SetRange(field.Result.End + 1, field.Result.End + 1)
-    }
-    else {
-      caret.SetRange(field.Result.End, field.Result.End)
-    }
+    // 光标移到域之后（见 getWholeFieldRange）：`Field.Result` 在域内部，直接用它会把
+    // 下一行卷进当前域的结果范围。
+    const after = getWholeFieldRange(field)
+    after.Collapse(wps.Enum.wdCollapseEnd)
+    caret.SetRange(after.Start, after.End)
+  }
+
+  if (separatorAfterLast) {
+    caret.InsertAfter("\r")
   }
   return true
 }
@@ -671,8 +682,10 @@ export function deleteExistingBibliography(range: Wps.Range): boolean {
   const first = bibliographyFields[0]
   const last = bibliographyFields[bibliographyFields.length - 1]
   try {
-    const start = Math.min(first.Code.Start, first.Result.Start)
-    const end = Math.max(last.Code.End, last.Result.End)
+    // 按“整个域”的边界删除（同 VBA 的 ReplaceBibliography）：只删到 `Result.End` 会
+    // 残留域标记。
+    const start = getWholeFieldRange(first).Start
+    const end = getWholeFieldRange(last).End
     const block = wps.ActiveDocument.Range().Duplicate
     block.SetRange(start, end)
     let onlyBibliographyFields = block.Fields.Count === bibliographyFields.length
@@ -730,9 +743,13 @@ export function insertBibliography(range: Wps.Range, lines: BibliographyLine[], 
     }
 
     if (i < lines.length - 1) {
-      field.Result.InsertParagraphAfter()
-      // 在域后面插入段落标记后，光标会停留在段落标记前面，这样在域后面就有一个额外的偏移量
-      caret.SetRange(field.Result.End + 1, field.Result.End + 1)
+      // 从域之后插入分隔符（见 getWholeFieldRange）：`Field.Result` 在域内部，直接用它
+      // 会把分隔符卷进结果范围。
+      const after = getWholeFieldRange(field)
+      after.Collapse(wps.Enum.wdCollapseEnd)
+      after.InsertAfter("\r")
+      after.Collapse(wps.Enum.wdCollapseEnd)
+      caret.SetRange(after.Start, after.End)
     }
   }
 }

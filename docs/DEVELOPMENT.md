@@ -383,6 +383,9 @@ const data = JSON.parse(field.Data)
 
 #### 域结果操作
 
+`Field.Result` 落在域内部：`Result.End` 就是域结束标记的位置，在它之后插入必须用
+`getWholeFieldRange()` 取 `[Code.Start - 1, Result.End + 1]`。
+
 ```typescript
 // 设置显示文本
 field.Result.Text = "引注文本"
@@ -524,6 +527,94 @@ props.Add("BANYAN_PREF", false, 4, value)
 ```typescript
 wps.ActiveDocument.CustomDocumentProperties.Item("BANYAN_PREF").Delete()
 ```
+
+## WPS 与 Word 的 API 差异
+
+移植或改写宿主交互代码（尤其 `src/utils/field.ts`）前先对照本节。条目均为实测（Word 16.0 /
+WPS 12.1.0.28505，COM 脚本，2026-09-17）。
+
+### 创建 ADDIN 域的结果范围
+
+WPS 用 `Fields.Add(range, wdFieldAddin, code, false)` 直接得到带分隔符、结果范围可写的域，写
+`Result.Text` 落在域内。Word 实测直接创建的 ADDIN 域没有分隔符、`Result` 是空折叠范围，写
+`Result.Text` 会落到域外正文。
+
+本插件只跑 WPS，可以直连；VBA 侧先用 `wdFieldQuote` 中转再换成 ADDIN 代码（`modField.bas` 的
+`FieldCreateRawAddinField`，与 Zotero `insertFieldRaw` 同法）。
+
+### 脚注创建后的插入点（两宿主都会带进脚注，条件不同）
+
+- WPS 实测：`Footnotes.Add` 之后插入点**无条件**留在新建脚注内（`Selection.StoryType =
+  wdFootnotesStory`），与插入点原先在哪里、传的是选区范围还是文档范围都无关。
+- Word 实测：插入点**正好落在插入位置**时被带进脚注（“在光标处插入引注”正是这种情形；早先
+  “Word 不动选区”的结论来自插入点在他处的对照），插入点在他处则不动。
+
+从脚注情节回到正文的手段也有差别：
+
+- Word：`Selection.GoTo(wdGoToPage, wdGoToAbsolute, n)` 返回的仍是脚注情节的范围（Word 的
+  `GoTo` 是情节内的），`Select()` 后仍停在脚注；只有选中正文范围（`Content.Collapse(wdCollapseEnd)`
+  再 `Select()`，或 `SetRange`）才回得去。
+- WPS：`Selection.GoTo(...)` 会回到正文情节（story 1）。
+
+因此创建/重建脚注后必须显式回移（`restoreMainTextAfterNote()`）；否则下一步要么在脚注里插入
+（两宿主都报错：“脚注只能添加到文档的主体部分” / “Value does not fall within the expected
+range”），要么让以选区为锚的范围计算落到脚注情节上。
+
+### 越界的位置
+
+WPS 实测 `Range.SetRange(pos, pos)` 越界 2 个字符以上不报错，静默变成 `0-0`（插入会落到文档
+开头）；恰越界 1 个字符时落到 `Content.End`。Word 实测 `SetRange` 钳制到 `Content.End - 1`，
+`ActiveDocument.Range(pos, pos)` 越界则抛 4608（数值超出范围）。删除文档末尾的域/脚注后，插入
+前先钳制位置（`clampInsertPosition()`，同 VBA），否则在 WPS 会插到文档开头。
+
+### WPS 特有行为
+
+**`WindowSelectionChange` 异步派发**：宿主稍后才投递选区变化事件，同步的“深度守卫”拦不住自触
+发事件（点击引注列表跳转时出现约 100 ms 的抖动循环）。taskpane 用“自触发选区过滤 + 用户改动
+延后处理”，见 `src/ui/taskpane.ts`。
+
+**宿主对象标识**：`wps.ActiveDocument !== wps.ActiveDocument`，每次访问都可能返回新的包装对
+象，不要用文档对象做缓存键。
+
+**样式与属性读取开销**：遍历 `Styles` 集合极慢（725–1334 ms/次），单次宿主属性读取也是毫秒级；
+`Application.Language`、`CustomXMLPart`、`PluginStorage` 读取会拖慢对话框首帧。按名称取样式
+（`Styles.Item(name)` 约 2.7 ms）；样式名未变时跳过 `Range.Style` 写入；热点路径缓存语言/主题。
+
+**对话框窗口焦点**：打开时不一定聚焦（`autofocus` 可能不生效），初始化期间 `alert()` 会抢走焦
+点，关闭后可能切回上一个窗口。首控件显式 `focus()` 并在 `focus` 事件重试；启动路径用非阻塞提
+示；保持 `isModal=true`。
+
+**HTML 脚本类型**：对话框与任务窗格脚本必须是 classic script（`type="text/javascript"`），
+ESM 入口会显著拖慢窗口打开。
+
+### 样式赋值与直接字符格式
+
+两宿主实测（在**已物化**的 ADDIN 域结果上，即带分隔符、结果范围可写的域）：
+
+- 赋**字符**样式：两宿主都会清掉直接字符格式（含粗体/斜体/上下标/大小写/字体名/字号/颜色/
+  底纹），**同名重复赋值也清**。
+- 赋**段落**样式：WPS 一律清除；Word 取决于该样式——新建的空段落样式（本插件的书目题录/标题
+  样式就是这种）**不清除**，自带字符格式的内置样式（如 `wdStyleFootnoteText`）会清除。
+- `Range.Text = …` 重写会继承原有的直接格式（两宿主一致）。
+
+因此两侧的段落样式路径都显式复位；字符样式路径每轮重写样式即可，不要加“同名跳过”门禁
+（见下列契约 2）。
+
+### 域与渲染契约（两个实现共享）
+
+1. **域后定位用整域范围** `Range(Code.Start - 1, Result.End + 1)`：`Result.End` 就是域结束标记
+   本身，在它处插入会落进域内（两宿主一致）。对应 VBA 的 `BibliographyWholeFieldRange`。
+2. **样式赋值是渲染前的清除步骤**：字符样式赋值自带清除，所以字符样式路径每轮都要写样式，
+   **不要加“同名跳过”的门禁**——它会静默取消清除，占位域的红色会留在屏幕上（本端口踩过）。
+   段落样式赋值不清除，需要显式复位（`clearDirectCharacterFormatting()`）。
+3. **渲染顺序**：写结果文本 → 隐藏域代码 →（段落样式路径）清除直接格式 → 套样式 → 应用 marks。
+   `Range.Text = …` 会继承结果上原有的直接格式，marks 必须最后落。
+4. **重新渲染丢弃结果上的直接字符格式**：内容由后端富文本决定，手动改的字体/颜色不保留
+   （FEATURES.md §8）；写文本同时会销毁范围内的超链接，因此不必手动删链接，但每轮都要重新添加。
+5. **创建/重建脚注后回移插入点**：见“脚注创建后的插入点”。
+6. **有意分歧：迁移循环的逐项隔离**。VBA 的 `FieldMigrate*` 只有函数级 `On Error GoTo`，一处失
+   败即放弃后续；本端口按 `CLAUDE.md`“单个域失败不能影响其他域”改为逐项 `try/catch` + 计数日
+   志。差异保留，不反向同步。
 
 ## 调试技巧
 
@@ -725,6 +816,9 @@ await withProgress("正在刷新引注...", async () => {
 - 对外部 I/O（HTTP、文件系统、WPS 宿主 API）应在调用层或边界层做异常处理
 - 错误信息必须清晰明确
 - 用户取消操作不显示错误
+- 宿主属性写入（`Field.ShowCodes`、`Range.Font`、`Range.Shading`）与范围/选区操作
+  （`Select`、`SetRange`、`Content.Start/End`）实测不会抛错，不要为“宿主可能不支持”补
+  `try/catch`；异常处理留给真正会失败的外部 I/O 与单个域损坏等边界
 
 ## FEATURES 对齐状态（基于当前代码）
 

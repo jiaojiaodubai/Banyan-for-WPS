@@ -10,7 +10,7 @@ import type {
 } from "../typings/style"
 import type { StyleIdentifier } from "../typings/http"
 import type { InlineMark, RichText } from "../typings/unit"
-import { logError, logWarn } from "./log"
+import { logError, logInfo, logWarn } from "./log"
 
 export const FIELD_PLACEHOLDER_COLOR = "#ff0000"
 
@@ -289,36 +289,48 @@ export function renderStyledField(
   field: Wps.Field,
   applyFieldStyle: (field: Wps.Field) => void,
   content?: RichText,
+  // 与 `renderStyledFieldWithData` 同理：决定清除直接字符格式的方式。
+  styleType: WordStyleType = "paragraph",
 ): boolean {
   const resolvedContent = resolveFieldContent(field, content)
   if (!resolvedContent) return false
 
-  return renderStyledFieldCore(field, applyFieldStyle, resolvedContent)
+  return renderStyledFieldCore(field, applyFieldStyle, resolvedContent, styleType)
 }
 
 /**
  * 用于调用方已经持有已解析数据的场景：刷新与插入路径手里本来就有响应对象，
  * 避免再解析一次 `Field.Data` 的单次开销很小，但对大书目与大批引注就不容忽视。
+ *
+ * `styleType` 决定清除直接字符格式的方式：字符样式赋值自带清除，段落样式赋值不会（WPS
+ * 实测），后者需要在渲染前显式复位。
  */
 export function renderStyledFieldWithData<T extends BanyanFieldData>(
   field: Wps.Field,
   applyFieldStyle: (field: Wps.Field) => void,
   data: T,
   content?: RichText,
+  styleType: WordStyleType = "paragraph",
 ): boolean {
   const resolvedContent = isRichText(content) ? content : data.content
   if (!isRichText(resolvedContent)) return false
 
-  return renderStyledFieldCore(field, applyFieldStyle, resolvedContent)
+  return renderStyledFieldCore(field, applyFieldStyle, resolvedContent, styleType)
 }
 
 function renderStyledFieldCore(
   field: Wps.Field,
   applyFieldStyle: (field: Wps.Field) => void,
   content: RichText,
+  styleType: WordStyleType,
 ): boolean {
   const resultRange = field.Result
   writeRangeText(resultRange, content)
+  // 同 VBA 的 RenderStyledFieldCore：渲染结果后隐藏域代码。
+  field.ShowCodes = false
+  // 写文本会继承结果上的旧直接格式；字符样式路径由 `applyFieldStyle` 的赋值清掉，
+  // 段落样式赋值不清除，先显式复位。
+  if (styleType === "paragraph") clearDirectCharacterFormatting(resultRange)
   applyFieldStyle(field)
   applyRichTextStylesToRange(resultRange, content)
   return true
@@ -341,6 +353,21 @@ export function renderRange(range: Wps.Range, content: RichText): void {
 
 function writeRangeText(range: Wps.Range, content: RichText): void {
   range.Text = content.text
+}
+
+/**
+ * 清除域结果上继承的直接字符格式，供段落样式路径在渲染前复位（字符样式赋值自带清除）。
+ */
+function clearDirectCharacterFormatting(range: Wps.Range): void {
+  const font = range.Font
+  font.Color = wps.Enum.wdColorAutomatic
+  font.Bold = 0
+  font.Italic = 0
+  font.Subscript = 0
+  font.Superscript = 0
+  font.SmallCaps = 0
+  font.AllCaps = 0
+  range.Shading.BackgroundPatternColor = wps.Enum.wdColorAutomatic
 }
 
 export function applyRichTextStylesToRange(range: Wps.Range, content: RichText): void {
@@ -486,10 +513,8 @@ export function applyRichTextLink(range: Wps.Range, link: string): void {
 
     const doc = wps.ActiveDocument
     if (linkTarget.type === "bookmark") {
-      // 书签尚未创建时 WPS 会拒绝 SubAddress（Word 会先接受、稍后再解析）。
-      // 引注域常在书目生成之前就已渲染，因此这里直接跳过未解析目标，而不是
-      // 抛出一个宿主异常。
-      if (!doc.Bookmarks.Exists(linkTarget.target)) return
+      // 不检查书签是否存在（同 VBA）：引注常先于书目渲染，宿主会先接受 SubAddress、
+      // 稍后解析；提前跳过会让该引注永久失去链接。
       doc.Hyperlinks.Add(
         range,
         undefined,
@@ -520,17 +545,48 @@ export function addBookmarkToField(field: Wps.Field, bookmarkName: string): void
     const normalizedName = normalizeBookmarkName(bookmarkName)
     if (!normalizedName) return
 
+    const resultRange = field.Result
+
     // 如果书签已存在，先删除
     if (bookmarks.Exists(normalizedName)) {
       bookmarks.Item(normalizedName).Delete()
     }
 
     // 在 field 的 Result 范围添加书签
-    bookmarks.Add(normalizedName, field.Result)
+    bookmarks.Add(normalizedName, resultRange)
   }
   catch (error) {
     logWarn("Field", `Failed to add bookmark \"${bookmarkName}\" to field.`, error)
   }
+}
+
+/** 把光标折叠到 `position` 处。 */
+export function moveCaretToPosition(position: number): void {
+  const caret = wps.ActiveDocument.Range().Duplicate
+  caret.SetRange(position, position)
+  caret.Select()
+}
+
+/**
+ * 把光标移回正文中脚注引用之后。
+ *
+ * WPS 的 `Footnotes.Add` 会把插入点留在脚注里（Word 不会），创建/重建脚注后需要回移。
+ */
+export function restoreMainTextAfterNote(note: Wps.Footnote): void {
+  moveCaretToPosition(note.Reference.End)
+}
+
+/**
+ * 取“整个域”的范围：`Range(Code.Start - 1, Result.End + 1)`，对应 VBA 的
+ * `BibliographyWholeFieldRange`。
+ *
+ * `Field.Result` 默认落在域内部（`Result.End` 就是域结束标记的位置），要在域后插入内容
+ * 必须用这个范围。
+ */
+export function getWholeFieldRange(field: Wps.Field): Wps.Range {
+  const range = wps.ActiveDocument.Range().Duplicate
+  range.SetRange(field.Code.Start - 1, field.Result.End + 1)
+  return range
 }
 
 export function getCaretStart(): Wps.Range {
@@ -545,6 +601,11 @@ export function getCaretEnd(): Wps.Range {
   return range
 }
 
+/**
+ * 样式类别。`renderStyledField*` 用它决定清除直接字符格式的方式（拼写与 VBA 的
+ * `FieldRenderStyledFieldWithStyle` 同名参数相同，但那边只用于查找/创建样式，
+ * 不决定清除策略，移植时不要混淆）。
+ */
 export type WordStyleType = "character" | "paragraph"
 
 function resolveWordStyleType(styleType: WordStyleType): number {
@@ -603,9 +664,11 @@ function getAppliedStyleName(field: Wps.Field): string {
 }
 
 /**
- * 套用段落/字符样式，返回是否真正发生了写入。
- * 样式名相同（名称为空或样式无法创建）时不写 `Range.Style`：这是 WPS 里最贵
- * 的一类调用，而且重复赋值会覆盖用户手工调整的格式。
+ * 套用段落/字符样式，返回是否真正写入了 `Range.Style`。
+ *
+ * 字符样式每轮都要写：赋值本身会清掉域结果上的直接字符格式（同名重复赋值也清，WPS
+ * 实测），这一步就是渲染前的清除。段落样式赋值不清直接字符格式，因此样式名相同时跳过
+ * 写入（`Range.Style` 是 WPS 里最贵的一类调用），清除交给渲染路径显式复位。
  */
 export function applyStyleToField(
   field: Wps.Field,
@@ -614,10 +677,8 @@ export function applyStyleToField(
 ): boolean {
   if (!styleName || styleName.trim() === "") return false
   try {
-    // 先比较再应用：样式名一致时直接返回，省掉样式查找与 `Range.Style` 写入。
-    // 读样式名只要一两次属性访问，因此这道门禁在 WPS 是纯收益（VBA 侧读样式名
-    // 要构造 COM 对象，那边才没有收益）。读不出来时按“不匹配”处理，保持纠正性赋值。
-    if (getAppliedStyleName(field) === styleName) return false
+    // 读不出来样式名时按“不匹配”处理，保持纠正性赋值。
+    if (styleType === "paragraph" && getAppliedStyleName(field) === styleName) return false
 
     const style = getOrCreateStyle(styleName, styleType)
     if (!style) return false
@@ -695,17 +756,6 @@ export function removeFootnoteSafely(footnote: Wps.Footnote | null | undefined):
   catch {
     // 回滚路径下的尽力清理。
   }
-}
-
-function deleteFieldOrThrow(field: Wps.Field): void {
-  if (field.Locked) {
-    field.Locked = false
-  }
-  field.Delete()
-}
-
-function deleteFootnoteOrThrow(footnote: Wps.Footnote): void {
-  footnote.Delete()
 }
 
 export function createEmptyCitationSource(): CitationSource {
@@ -897,12 +947,15 @@ export function createNoteCitationAtRange(range: Wps.Range, data: NoteCitation):
     applyRichTextStylesToRange(referenceRange, data.reference)
   }
 
+  // 域插进折叠到起点的脚注正文范围（同 VBA）：非折叠范围会把域插到段落标记之后，
+  // 脚注正文就是空的。
   const textRange = note.Range.Duplicate
   textRange.Collapse(wps.Enum.wdCollapseStart)
-  const field = wps.ActiveDocument.Fields.Add(
-    note.Range,
+  const field = textRange.Fields.Add(
+    textRange,
     wps.Enum.wdFieldAddin,
     citationFieldCode(data.id),
+    false,
   )
   field.Data = JSON.stringify(data)
   renderStyledFieldWithData(field, applyNoteCitationStyle, data, data.content)
@@ -945,7 +998,8 @@ export function rebuildNoteCitationAtRange(
 
     // 自定义引用标记变了就必须新建脚注：复制 FormattedText 时保持新旧脚注同时
     // 存活，让直接格式与内嵌域先完成转移，再删掉旧脚注。
-    const insertPosition = note.Reference.End
+    // 钳制同 VBA：越界位置在 WPS 会静默落到 `0-0`，新脚注会插到文档开头。
+    const insertPosition = clampInsertPosition(note.Reference.End)
     const insertRange = wps.ActiveDocument.Range().Duplicate
     insertRange.SetRange(insertPosition, insertPosition)
     const referenceText = newReferenceText.length > 0 ? newReferenceText : undefined
@@ -1044,41 +1098,89 @@ export function createIntextCitationAtRange(range: Wps.Range, data: IntextCitati
     false,
   )
   field.Data = JSON.stringify(data)
-  renderStyledFieldWithData(field, applyIntextCitationStyle, data, data.content)
+  renderStyledFieldWithData(field, applyIntextCitationStyle, data, data.content, "character")
   return field
 }
 
 export function migrateIntextCitationsToNotes(range: Wps.Range): void {
   const citations = collectIntextCitationFieldsInRange(range)
+  logInfo("Field", `Migrating ${citations.length} intext citation(s) to note citations.`)
+  let converted = 0
   for (let i = citations.length - 1; i >= 0; i -= 1) {
     const { field } = citations[i]
     // 收集阶段不再读数据；这里确实需要数据才读取。
     const data = readFieldData<IntextCitation>(field)
-    if (!isIntextCitation(data)) continue
+    if (!isIntextCitation(data)) {
+      logWarn("Field", "Skipped an intext citation without readable data during migration.")
+      continue
+    }
 
-    const insertPosition = field.Result.Start
+    // 插入位置取域起点 `Code.Start - 1`（域代码从起始标记之后一个字符开始）；删除域
+    // 会连代码一起删掉、域内位置会偏移，域起点不会。反向遍历使前面的引注不受影响。
+    const insertPosition = field.Code.Start - 1
     const convertedData = createNoteCitationFromIntext(data)
-    deleteFieldOrThrow(field)
+    // 与 VBA 一致，用安全版本删除：单个引注失败不影响其余引注。
+    removeFieldSafely(field)
 
+    // 插入点在待删域之前取得，删除不会使文档在该点之前变短，无需钳制。
     const insertRange = createCollapsedRange(insertPosition)
-    createNoteCitationAtRange(insertRange, convertedData)
+    try {
+      const created = createNoteCitationAtRange(insertRange, convertedData)
+      converted += 1
+      // 创建脚注会把插入点留在脚注里；立即回移到引用之后。
+      restoreMainTextAfterNote(created.note)
+    }
+    catch (error) {
+      logWarn("Field", `Failed to create a note citation for ${data.id} during migration.`, error)
+    }
   }
+  logInfo("Field", `Migrated ${converted} of ${citations.length} intext citation(s) to note citations.`)
 }
 
 export function migrateNoteCitationsToIntext(range: Wps.Range): void {
   const citations = collectNoteCitationFootnotesInRange(range)
+  logInfo("Field", `Migrating ${citations.length} note citation(s) to intext citations.`)
+  let converted = 0
   for (let i = citations.length - 1; i >= 0; i -= 1) {
     const { note: footnote, field } = citations[i]
     const data = readFieldData<NoteCitation>(field)
-    if (!isNoteCitation(data)) continue
+    if (!isNoteCitation(data)) {
+      logWarn("Field", "Skipped a note citation without readable data during migration.")
+      continue
+    }
 
+    // 引用标记只占一个字符，删除脚注不会移动它的起点，无需活动锚点。
     const insertPosition = footnote.Reference.Start
     const convertedData = createIntextCitationFromNote(data)
-    deleteFootnoteOrThrow(footnote)
+    removeFootnoteSafely(footnote)
 
-    const insertRange = createCollapsedRange(insertPosition)
-    createIntextCitationAtRange(insertRange, convertedData)
+    // 插入点取自在脚注引用处，删除脚注会让文档变短，需要钳制（同 VBA）。
+    const insertRange = createCollapsedRange(clampInsertPosition(insertPosition))
+    try {
+      createIntextCitationAtRange(insertRange, convertedData)
+      converted += 1
+    }
+    catch (error) {
+      logWarn("Field", `Failed to create an intext citation for ${data.id} during migration.`, error)
+    }
   }
+  logInfo("Field", `Migrated ${converted} of ${citations.length} note citation(s) to intext citations.`)
+}
+
+/**
+ * 把位置限制在 `[Content.Start, Content.End - 1]` 内（同 VBA 的 ClampInsertPosition）：
+ * 删除文档末尾的域/脚注会让文档变短，越界位置在 WPS 会静默落到 `0-0`（插到开头）。
+ */
+function clampInsertPosition(position: number): number {
+  const content = wps.ActiveDocument.Content
+  let clamped = position
+  if (content.End > content.Start && clamped > content.End - 1) {
+    clamped = content.End - 1
+  }
+  if (clamped < content.Start) {
+    clamped = content.Start
+  }
+  return clamped
 }
 
 export function applyIntextCitationStyle(field: Wps.Field): void {

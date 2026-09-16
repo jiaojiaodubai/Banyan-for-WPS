@@ -143,7 +143,7 @@ export async function runFieldTests(context: TestContext): Promise<void> {
           resetTestDocument()
           const data = makeIntextCitation(`${variant}-${i}`, variant)
           const field = insertRawIntextField(data)
-          assert.ok(renderStyledField(field, applyIntextCitationStyle, data.content))
+          assert.ok(renderStyledField(field, applyIntextCitationStyle, data.content, "character"))
         }
       }, { iterations: REPETITIONS })
     })
@@ -155,14 +155,14 @@ export async function runFieldTests(context: TestContext): Promise<void> {
       for (let i = 0; i < REPETITIONS; i += 1) {
         resetTestDocument()
         const field = insertRawIntextField(data)
-        renderStyledField(field, applyIntextCitationStyle, data.content)
+        renderStyledField(field, applyIntextCitationStyle, data.content, "character")
       }
     }, { iterations: REPETITIONS })
     await context.measure(MODULE, "render implicit content", () => {
       for (let i = 0; i < REPETITIONS; i += 1) {
         resetTestDocument()
         const field = insertRawIntextField(data)
-        renderStyledField(field, applyIntextCitationStyle)
+        renderStyledField(field, applyIntextCitationStyle, undefined, "character")
       }
     }, { iterations: REPETITIONS })
   })

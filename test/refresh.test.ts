@@ -77,7 +77,7 @@ export async function runRefreshTests(context: TestContext): Promise<void> {
 
           await context.measure(MODULE, "render rich", () => {
             for (let i = 0; i < pairs.length; i += 1) {
-              renderStyledField(pairs[i].field, applyIntextCitationStyle, updates[i].content)
+              renderStyledField(pairs[i].field, applyIntextCitationStyle, updates[i].content, "character")
             }
           }, { size, mode })
         }
@@ -138,7 +138,7 @@ export async function runRefreshTests(context: TestContext): Promise<void> {
         options.CheckGrammarAsYouType = mode.grammar
         await context.measure(MODULE, "render host option mode", () => {
           for (let i = 0; i < pairs.length; i += 1) {
-            renderStyledField(pairs[i].field, applyIntextCitationStyle, updates[i].content)
+            renderStyledField(pairs[i].field, applyIntextCitationStyle, updates[i].content, "character")
           }
         }, { size, mode: mode.name })
       }

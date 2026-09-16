@@ -107,6 +107,36 @@ let activeItemElement: HTMLLIElement | null = null
 let selectionRefreshTimer: number | null = null
 let lastSelectionKey: string | null = null
 let selectionPreservationDepth = 0
+let selectionSyncSettleUntil = 0
+
+const SELECTION_REFRESH_DELAY_MS = 120
+const SELECTION_SYNC_SETTLE_MS = 300
+const SELF_INDUCED_SELECTION_TTL_MS = 1000
+
+/**
+ * 插件自己造成的选区变化（key → 记录时间）。
+ *
+ * `WindowSelectionChange` 可能迟到（保护窗口已关闭），不能只靠
+ * `selectionPreservationDepth` 判断来源；不过滤会让刷新中的选区移动再次触发刷新。
+ */
+const selfInducedSelections = new Map<string, number>()
+
+function rememberSelfInducedSelection(key: string | null): void {
+  if (key === null) return
+  const now = Date.now()
+  for (const [name, time] of selfInducedSelections) {
+    if (now - time > SELF_INDUCED_SELECTION_TTL_MS) {
+      selfInducedSelections.delete(name)
+    }
+  }
+  selfInducedSelections.set(key, now)
+}
+
+function isSelfInducedSelection(key: string): boolean {
+  const time = selfInducedSelections.get(key)
+  if (time === undefined) return false
+  return Date.now() - time <= SELF_INDUCED_SELECTION_TTL_MS
+}
 
 function getErrorMessage(error: unknown): string {
   if (error instanceof Error) {
@@ -217,11 +247,20 @@ function setupTaskpaneSync(): void {
 }
 
 function scheduleRefreshForSelectionChange(): void {
+  const selectionKey = getSelectionKey()
   if (selectionPreservationDepth > 0) {
+    // 保护区内的选区变化都是插件造成的（重选原选区、章节定位等）：先记录，供事件
+    // 到达时过滤。
+    rememberSelfInducedSelection(selectionKey)
     return
   }
-  const selectionKey = getSelectionKey()
-  if (selectionKey === null || selectionKey === lastSelectionKey) {
+  if (selectionKey === null) {
+    return
+  }
+  if (isSelfInducedSelection(selectionKey)) {
+    return
+  }
+  if (selectionKey === lastSelectionKey) {
     return
   }
   lastSelectionKey = selectionKey
@@ -229,10 +268,12 @@ function scheduleRefreshForSelectionChange(): void {
   if (selectionRefreshTimer !== null) {
     window.clearTimeout(selectionRefreshTimer)
   }
+  // 落在过滤时间窗内的用户改动不丢弃，延后到时间窗结束再处理。
+  const delay = Math.max(SELECTION_REFRESH_DELAY_MS, selectionSyncSettleUntil - Date.now())
   selectionRefreshTimer = window.setTimeout(() => {
     selectionRefreshTimer = null
     void refreshPane()
-  }, 120)
+  }, delay)
 }
 
 function setupSelectionSync(): void {
@@ -282,6 +323,9 @@ async function withSelectionPreserved<T>(task: () => Promise<T> | T): Promise<T>
     try {
       originalRange.Select()
       rememberCurrentSelection()
+      // 这一步与任务内部的章节定位也会异步派发选区事件：记录并设置过滤时间窗。
+      rememberSelfInducedSelection(lastSelectionKey)
+      selectionSyncSettleUntil = Date.now() + SELECTION_SYNC_SETTLE_MS
     }
     finally {
       selectionPreservationDepth -= 1
