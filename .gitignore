@@ -3,4 +3,4 @@ dist
 release
 wps-addon-publish
 wps-addon-build
-package-lock.json
+.wps-bridge.json

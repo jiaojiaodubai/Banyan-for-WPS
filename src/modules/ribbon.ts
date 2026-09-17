@@ -46,7 +46,7 @@ const LABELS_ZH = {
   btnRefresh: "刷新",
   btnConvert: "转换 Zotero 域",
   btnUnlink: "定稿",
-  btnDebugFieldData: "运行测试",
+  btnDebugFieldData: "运行调试代码",
   btnSettings: "设置",
   btnDarkTheme: "暗色主题",
 }
@@ -58,7 +58,7 @@ const LABELS_EN = {
   btnRefresh: "Refresh",
   btnConvert: "Convert Zotero Fields",
   btnUnlink: "Finalize",
-  btnDebugFieldData: "Run Tests",
+  btnDebugFieldData: "Run Debug Code",
   btnSettings: "Preferences",
   btnDarkTheme: "Dark Theme",
 }
@@ -106,12 +106,14 @@ function OnAction(arg1: unknown, arg2?: unknown) {
       void withOperationLock(() => onPreferenceEvent(), undefined, "open-preference-dialog")
       break
     case "btnDebugFieldData": {
+      // 开发期人工临时调试入口：指向 test/debug.ts（快速检查，随时改写）。
+      // 耗时的性能测试不挂在这里，而是由调试桥执行 `npm run test:wps`。
       void withOperationLock(async () => {
         if (!import.meta.env.DEV) return
-        const testModulePath = "/test/index.ts"
-        const { runPerformanceTests } = await import(/* @vite-ignore */ testModulePath) as typeof import("../../test/index")
-        await runPerformanceTests()
-      }, "__banyan_performance_tests__", "performance-tests")
+        const debugModulePath = "/test/debug.ts"
+        const { runDebugEntry } = await import(/* @vite-ignore */ debugModulePath) as typeof import("../../test/debug")
+        runDebugEntry()
+      }, "__banyan_debug_entry__", "debug-entry")
       break
     }
     case "btnDarkTheme": {
