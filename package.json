@@ -7,6 +7,7 @@
 		"dev": "vite --port 3889",
 		"build": "node build.js",
 		"build:vite": "vite build",
+		"test:wps": "wps-bridge run ./test/index.ts --expect-report --launch",
 		"preview": "vite preview",
 		"lint:fix": "eslint --fix",
 		"lint:check": "eslint ."
@@ -24,6 +25,7 @@
 		"typescript-eslint": "^8.52.0",
 		"vite": "latest",
 		"wps-jsapi-declare": "latest",
+		"wps-js-addin-debug-bridge": "github:jiaojiaodubai/wps-js-addin-debug-bridge#v0.1.0",
 		"wpsjs": "latest",
 		"zotero-types": "^4.1.2"
 	}
