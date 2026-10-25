@@ -2,7 +2,14 @@ import { getDocumentId, request } from "../utils/http"
 import { getConfig } from "../utils/config"
 import { useI10n } from "../utils/i10n"
 import { logError } from "../utils/log"
-import { getPreference, savePreference, type Preference } from "../modules/preference"
+import {
+  asStyleBinding,
+  getPreference,
+  normalizeStyleOptions,
+  savePreference,
+  type Preference,
+  type StyleDialogResult,
+} from "../modules/preference"
 import { refreshForStyleChange } from "../modules/refresh"
 import { applyChapterBibliographyStyles } from "../modules/bibliography"
 import "./components/banyan-checkbox"
@@ -68,7 +75,7 @@ function createDefaultState(): Preference {
   return {
     syncItems: true,
     refreshAll: true,
-    style: { id: "", title: "", citationType: "intext-citation" },
+    style: { id: "", title: "", citationType: "intext-citation", options: {} },
     bibliographyTitleStyle: t("preferenceUi.defaultBibliographyTitleStyle"),
     bibliographyEntryStyle: t("preferenceUi.defaultBibliographyEntryStyle"),
   }
@@ -77,7 +84,7 @@ function createDefaultState(): Preference {
 const state: Preference = {
   syncItems: true,
   refreshAll: true,
-  style: { id: "", title: "", citationType: "intext-citation" },
+  style: { id: "", title: "", citationType: "intext-citation", options: {} },
   bibliographyTitleStyle: "",
   bibliographyEntryStyle: "",
 }
@@ -149,7 +156,9 @@ function getErrorMessage(error: unknown): string {
 }
 
 function cloneStyle(style: Preference["style"] | undefined): Preference["style"] | undefined {
-  return style ? { ...style } : undefined
+  return style
+    ? { ...style, options: { ...normalizeStyleOptions(style.options) } }
+    : undefined
 }
 
 function readThemeMode(): ThemeMode {
@@ -276,17 +285,21 @@ async function fetchStyle() {
   nodes.fetchStyleBtn.disabled = true
   nodes.fetchStyleBtn.textContent = t("preferenceUi.fetchingStyle")
   try {
-    const style = await request(
-      "style",
-      state.style
-        ? { documentId: getDocumentId(), id: state.style.id, title: state.style.title }
-        : { documentId: getDocumentId() },
-    )
+    // The request type is owned by the backend contract; the current options
+    // ride along as an extra field and are echoed by the dialog.
+    const styleRequest = state.style?.id
+      ? {
+          documentId: getDocumentId(),
+          ...asStyleBinding(state.style),
+        }
+      : { documentId: getDocumentId() }
+    const style = (await request("style", styleRequest)) as StyleDialogResult | null
     if (style) {
       state.style = {
         id: style.id,
         title: style.title,
         citationType: style.citationType,
+        options: normalizeStyleOptions(style.options),
       }
       renderState()
     }

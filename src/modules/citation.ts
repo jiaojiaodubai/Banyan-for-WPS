@@ -8,7 +8,6 @@ import {
   createNoteCitationAtRange,
   createPlaceholderIntextCitationData,
   createPlaceholderNoteCitationData,
-  asStyleIdentifier,
   isIntextCitation,
   isNoteCitation,
   moveCaretToPosition,
@@ -20,7 +19,7 @@ import {
 import { IntextCitation, NoteCitation } from "../typings/style"
 import { refresh, refreshAll } from "./refresh"
 import { notifyTaskpaneCitationsRefreshed } from "./taskpane"
-import { StyleIdentifier } from "../typings/http"
+import { asStyleBinding, type PrefStyle } from "./preference"
 
 const CITATION_MESSAGE_ZH = {
   notInMainText: "引注只能插入在主文档正文中。",
@@ -86,7 +85,7 @@ export async function onCitationEvent() {
         const data = readFieldData(field)
         if (isIntextCitation(data)) {
           found = true
-          updated = await editIntextCitation({ field, data }, asStyleIdentifier(pref.style))
+          updated = await editIntextCitation({ field, data }, pref.style)
           break
         }
         else {
@@ -95,7 +94,7 @@ export async function onCitationEvent() {
         }
       }
       if (!found) {
-        updated = await addIntextCitation(range, asStyleIdentifier(pref.style))
+        updated = await addIntextCitation(range, pref.style)
       }
       break
     }
@@ -113,7 +112,7 @@ export async function onCitationEvent() {
           const data = readFieldData(field)
           if (isNoteCitation(data)) {
             found = true
-            updated = await editNoteCitation({ field, data }, asStyleIdentifier(pref.style))
+            updated = await editNoteCitation({ field, data }, pref.style)
             break
           }
           else {
@@ -123,7 +122,7 @@ export async function onCitationEvent() {
         }
       }
       if (!found) {
-        const note = await addNoteCitation(range, asStyleIdentifier(pref.style))
+        const note = await addNoteCitation(range, pref.style)
         if (note) {
           // 取引用末尾：插入点会落在引用之前，需要回移。
           updated = true
@@ -156,7 +155,7 @@ export async function onCitationEvent() {
 
 async function addIntextCitation(
   range: Wps.Range,
-  style: StyleIdentifier
+  style: PrefStyle
 ): Promise<boolean> {
   const id = crypto.randomUUID()
   const data = createPlaceholderIntextCitationData(id, createEmptyCitationSource())
@@ -165,7 +164,7 @@ async function addIntextCitation(
   try {
     const source = await request("citation", {
       documentId: getDocumentId(),
-      style: style,
+      style: asStyleBinding(style),
     })
     if (!source) {
       removeFieldSafely(field)
@@ -183,12 +182,12 @@ async function addIntextCitation(
 
 async function editIntextCitation(
   fd: FieldAndData<IntextCitation>,
-  style: StyleIdentifier
+  style: PrefStyle
 ): Promise<boolean> {
   const { field, data } = fd
   const newSource = await request("citation", {
     documentId: getDocumentId(),
-    style: style,
+    style: asStyleBinding(style),
     source: data.source,
   })
   if (!newSource) return false
@@ -199,7 +198,7 @@ async function editIntextCitation(
 
 async function addNoteCitation(
   range: Wps.Range,
-  style: StyleIdentifier
+  style: PrefStyle
 ): Promise<Wps.Footnote | null> {
   const id = crypto.randomUUID()
   const data = createPlaceholderNoteCitationData(id, createEmptyCitationSource())
@@ -208,7 +207,7 @@ async function addNoteCitation(
   try {
     const source = await request("citation", {
       documentId: getDocumentId(),
-      style: style,
+      style: asStyleBinding(style),
     })
     if (!source) {
       removeFootnoteSafely(note)
@@ -226,12 +225,12 @@ async function addNoteCitation(
 
 async function editNoteCitation(
   fd: FieldAndData<NoteCitation>,
-  style: StyleIdentifier
+  style: PrefStyle
 ): Promise<boolean> {
   const { field, data } = fd
   const newSource = await request("citation", {
     documentId: getDocumentId(),
-    style: style,
+    style: asStyleBinding(style),
     source: data.source,
   })
   if (!newSource) return false
@@ -239,3 +238,5 @@ async function editNoteCitation(
   field.Data = JSON.stringify(data)
   return true
 }
+
+

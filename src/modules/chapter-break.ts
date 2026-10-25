@@ -61,7 +61,8 @@ function isPrefStyle(v: unknown): v is PrefStyle {
   ]
   return (
     isUnknownRecord(v) &&
-    props.every((prop) => typeof v[prop] === "string")
+    props.every((prop) => typeof v[prop] === "string") &&
+    (v.options === undefined || isUnknownRecord(v.options))
   )
 }
 

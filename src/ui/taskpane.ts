@@ -63,11 +63,13 @@ const t = useI10n({
   [wps.Enum.msoLanguageIDEnglishUS]: { taskpane: LABELS_EN },
 })
 
+const ITEM_URI_KEY = "z:uri" as const
+
 type CitationData = IntextCitation | NoteCitation
 type ThemeMode = "light" | "dark"
 type CitationItem = {
-  id: number
-  uri: string
+  id: string
+  itemUri?: string
   title: string
 }
 
@@ -360,18 +362,24 @@ function getPreview(field: Wps.Field, data: CitationData): string {
 }
 
 function extractCitationItems(data: CitationData): CitationItem[] {
-  const items = new Map<number, CitationItem>()
+  const items = new Map<string, CitationItem>()
   for (const cite of data.source.cites) {
-    if (typeof cite.item.id === "number") {
-      const existing = items.get(cite.item.id)
-      if (existing) {
-        continue
-      }
-      const title = typeof cite.item.title === "string" && cite.item.title.trim()
-        ? cite.item.title
-        : t("taskpane.untitled")
-      items.set(cite.item.id, { id: cite.item.id, uri: cite.item.uri, title })
+    const id = typeof cite.item.id === "string" ? cite.item.id.trim() : ""
+    if (!id) {
+      continue
     }
+    if (items.has(id)) {
+      continue
+    }
+    const itemUri = cite.item[ITEM_URI_KEY]
+    const title = typeof cite.item.title === "string" && cite.item.title.trim()
+      ? cite.item.title
+      : t("taskpane.untitled")
+    items.set(id, {
+      id,
+      itemUri: typeof itemUri === "string" && itemUri ? itemUri : undefined,
+      title,
+    })
   }
   return [...items.values()]
 }
@@ -757,8 +765,11 @@ function renderCitationList(entries: CitationEntry[], message?: string) {
 }
 
 async function showInLibrary(item: CitationItem) {
+  if (!item.itemUri) {
+    return
+  }
   try {
-    await request("showInLibrary", { uri: item.uri })
+    await request("showInLibrary", { uri: item.itemUri })
   }
   catch (error) {
     alert(t("taskpane.showLibraryError", { message: getErrorMessage(error) }))

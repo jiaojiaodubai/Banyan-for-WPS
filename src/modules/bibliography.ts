@@ -24,7 +24,7 @@ import {
   renderStyledFieldWithData,
 } from "../utils/field"
 import type { BibliographyTitle, CitationContext, BibliographyLine, IntextCitation, NoteCitation } from "../typings/style"
-import { getPreference, savePreference } from "./preference"
+import { getPreference, asStyleBinding, savePreference } from "./preference"
 import { getUpdateRange } from "./chapter-break"
 import { logError, logWarn } from "../utils/log"
 
@@ -121,7 +121,7 @@ export async function onBibliographyEvent(): Promise<void> {
         await withProgress(t("bibliography.progressReason"), async () => {
           const response = await request("refresh", {
             documentId: getDocumentId(),
-            style: asStyleIdentifier(style),
+            style: asStyleBinding(style),
             contexts,
             syncItems: pref.syncItems,
           })

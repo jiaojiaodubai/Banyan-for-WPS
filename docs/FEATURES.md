@@ -178,7 +178,7 @@
 
 **必须支持**：
 
-- 引用样式（style）
+- 引用样式（style，含样式声明的文档级 `options` 值）
 - 手动添加的未引用文献（extraSource）
 - 参考文献标题样式（bibliographyTitleStyle）
 - 参考文献条目样式（bibliographyEntryStyle）
@@ -275,8 +275,8 @@
 
 **必须支持**：
 
-- 获取当前样式
-- 设置引用样式
+- 获取当前样式及其文档级 `options`
+- 设置引用样式（选择样式时一并保存样式声明的 `options`）
 - 设置参考文献样式
 
 **操作流程**：

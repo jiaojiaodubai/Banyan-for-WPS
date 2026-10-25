@@ -1,7 +1,6 @@
 import { CitationContext, CitationsMap, IntextCitation, NoteCitation } from "../typings/style"
 import {
   applyIntextCitationStyle,
-  asStyleIdentifier,
   collectIntextCitationFieldsInRange,
   collectNoteCitationFootnotesInRange,
   fieldContentEquals,
@@ -23,8 +22,8 @@ import { request, getDocumentId } from "../utils/http"
 import { useI10n } from "../utils/i10n"
 import { logWarn } from "../utils/log"
 import { withProgress } from "../utils/progress"
-import type { PrefStyle } from "./preference"
-import { getPreference } from "./preference"
+import type { PrefStyle, StyleOptionValues } from "./preference"
+import { asStyleBinding, getPreference } from "./preference"
 import { findPreviousChapterBreak, getUpdateRange } from "./chapter-break"
 import { notifyTaskpaneCitationsRefreshed } from "./taskpane"
 import {
@@ -49,6 +48,22 @@ const t = useI10n({
   [wps.Enum.msoLanguageIDEnglishUS]: { refresh: REFRESH_MESSAGE_EN },
 })
 
+function sameStyleOptions(
+  previous: StyleOptionValues | undefined,
+  next: StyleOptionValues | undefined,
+): boolean {
+  const previousOptions = previous ?? {}
+  const nextOptions = next ?? {}
+  const previousKeys = Object.keys(previousOptions).sort()
+  const nextKeys = Object.keys(nextOptions).sort()
+  if (previousKeys.length !== nextKeys.length) {
+    return false
+  }
+  return previousKeys.every((key, index) =>
+    key === nextKeys[index] && previousOptions[key] === nextOptions[key]
+  )
+}
+
 function isSameStyle(
   previousStyle: PrefStyle | undefined,
   nextStyle: PrefStyle,
@@ -60,6 +75,7 @@ function isSameStyle(
   return previousStyle.id === nextStyle.id
     && previousStyle.title === nextStyle.title
     && previousStyle.citationType === nextStyle.citationType
+    && sameStyleOptions(previousStyle.options, nextStyle.options)
 }
 
 function indexCitationResponses(citations: RefreshResponseData["citations"]): Map<string, RefreshResponseData["citations"][number]> {
@@ -236,7 +252,7 @@ async function refreshInRange(range?: Wps.Range, syncItems?: boolean): Promise<b
 
     const respond = await request("refresh", {
       documentId: getDocumentId(),
-      style: asStyleIdentifier(prefs.style),
+      style: asStyleBinding(prefs.style),
       contexts,
       syncItems: syncItems ?? prefs.syncItems,
     })
@@ -304,7 +320,7 @@ async function refreshInRange(range?: Wps.Range, syncItems?: boolean): Promise<b
 
     const respond = await request("refresh", {
       documentId: getDocumentId(),
-      style: asStyleIdentifier(prefs.style),
+      style: asStyleBinding(prefs.style),
       contexts,
       syncItems: syncItems ?? prefs.syncItems,
     })
@@ -466,3 +482,4 @@ async function refreshAllInDocument(syncItems?: boolean): Promise<void> {
 
   originalRange.Select()
 }
+

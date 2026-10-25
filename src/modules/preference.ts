@@ -4,7 +4,26 @@ import { useI10n } from "../utils/i10n"
 import { openDialog } from "../utils/window"
 import { findPreviousChapterBreak } from "./chapter-break"
 
-export type PrefStyle = Pick<StyleInfo, "id" | "title" | "citationType">
+export type StyleOptionValue = string | boolean
+export type StyleOptionValues = Record<string, StyleOptionValue>
+
+export type PrefStyle = Pick<StyleInfo, "id" | "title" | "citationType"> & {
+  /** Document-wide style options; absent on documents written before they existed. */
+  options?: StyleOptionValues
+}
+
+/** Style identifier plus the stored options carried by every render request. */
+export type StyleBinding = Pick<StyleInfo, "id" | "title"> & {
+  options: StyleOptionValues
+}
+
+/** The `/style` response also carries the confirmed style's stored options. */
+export type StyleDialogResult = Pick<
+  StyleInfo,
+  "id" | "title" | "citationType"
+> & {
+  options?: StyleOptionValues
+}
 
 export type GlobalPreference = {
   // 全局：刷新时从 Zotero 客户端同步条目元数据，或仅在插入/编辑引注时同步
@@ -22,6 +41,29 @@ export type ChapterPreference = {
   bibliographyTitleStyle: string
   // 章节级：书目题录的 Word 样式名，首章必填，后续章节继承
   bibliographyEntryStyle: string
+}
+
+/** Keep only values a style option can carry; JSON may contain anything. */
+export function normalizeStyleOptions(value: unknown): StyleOptionValues {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {}
+  }
+  const options: StyleOptionValues = {}
+  for (const [key, raw] of Object.entries(value)) {
+    if (typeof raw === "string" || typeof raw === "boolean") {
+      options[key] = raw
+    }
+  }
+  return options
+}
+
+/** Request payload for every route that needs to render with the style. */
+export function asStyleBinding(style: PrefStyle): StyleBinding {
+  return {
+    id: style.id,
+    title: style.title,
+    options: normalizeStyleOptions(style.options),
+  }
 }
 
 export type Preference =  GlobalPreference & ChapterPreference
@@ -82,7 +124,10 @@ export function getLocalPreference(): Preference | null {
   return {
     syncItems: partPref.syncItems,
     refreshAll: partPref.refreshAll,
-    style: prevChapterBreak.data.style,
+    style: {
+      ...prevChapterBreak.data.style,
+      options: normalizeStyleOptions(prevChapterBreak.data.style.options),
+    },
     extraSource: prevChapterBreak.data.extraSource,
     bibliographyTitleStyle: prevChapterBreak.data.bibliographyTitleStyle,
     bibliographyEntryStyle: prevChapterBreak.data.bibliographyEntryStyle,
@@ -96,7 +141,10 @@ function getPrefFromDocumentProperty(): Preference | null {
     const raw = props.Item(PREFERENCE_PROPERTY).Value
     if (typeof raw !== "string") return null
     const parsed = JSON.parse(raw) as Preference
-    return parsed && parsed.style ? parsed : null
+    if (!parsed || !parsed.style) return null
+    // Older documents have no options; normalize both missing and malformed values.
+    parsed.style.options = normalizeStyleOptions(parsed.style.options)
+    return parsed
   }
   catch { return null }
 }
@@ -156,7 +204,9 @@ export function removePreferencePart() {
 }
 
 async function createPreference(): Promise<Preference | null> {
-  const style = await request("style", { documentId: getDocumentId() })
+  const style = (await request("style", {
+    documentId: getDocumentId(),
+  })) as StyleDialogResult | null
   if (!style) {
     return null
   }
@@ -167,6 +217,7 @@ async function createPreference(): Promise<Preference | null> {
       id: style.id,
       title: style.title,
       citationType: style.citationType,
+      options: normalizeStyleOptions(style.options),
     },
     bibliographyTitleStyle: t("preference.defaultBibliographyTitleStyle"),
     bibliographyEntryStyle: t("preference.defaultBibliographyEntryStyle"),
